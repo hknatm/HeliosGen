@@ -382,7 +382,7 @@ function ModelGroup({
               category={m.category}
               value={providers[m.id] ?? "kie"}
               onChange={(v) => onProviderChange(m.id, v)}
-              azureSupported={!!m.hasAzureDeployment}
+              azureSupported={false}
             />
             {/* Deployment name — shown only for Azure-capable models when Azure is selected */}
             {m.hasAzureDeployment && (providers[m.id] ?? "kie") === "azure" && (
@@ -680,10 +680,9 @@ function ApiKeysPanel({
         )}
       </div>
 
-      {/* ──── Azure Foundry API key + endpoint ────────────────────────── */}
+      {/* Azure configuration is retained for backwards compatibility but hidden in this fork. */}
       <div
-        style={{
-          display: "flex",
+        style={{ display: "none",
           flexDirection: "column",
           gap: "10px",
           padding: "16px",
@@ -1156,7 +1155,7 @@ function TextModelsPanel({
       {/* Azure Auto card */}
       <div
         style={{
-          display: "flex",
+          display: "none",
           flexDirection: "column",
           gap: "14px",
           padding: "16px",

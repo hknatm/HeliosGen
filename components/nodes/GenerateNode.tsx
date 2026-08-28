@@ -393,7 +393,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
       window.removeEventListener("aiui-providers-changed", read);
     };
   }, [model]);
-  const isAzureProvider = currentProvider === "azure";
+  const isAzureProvider = false;
   const isCodexProvider = currentProvider === "codex";
 
   const promptInfo = (() => {
@@ -646,10 +646,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
       try { return JSON.parse(localStorage.getItem("aiui-azure-endpoints") ?? "{}")[model] ?? ""; }
       catch { return ""; }
     })();
-    const isAzure = !!(azureBaseUrl && azureDeployment && (() => {
-      try { return (JSON.parse(localStorage.getItem("aiui-model-providers") ?? "{}")[model] ?? "kie") === "azure"; }
-      catch { return false; }
-    })());
+    const isAzure = false;
     const azureQuality = (data.azureQuality as string | undefined) ?? "auto";
     const azureResolution = (data.azureResolution as string | undefined) ?? "1k";
 

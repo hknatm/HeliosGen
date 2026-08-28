@@ -14,7 +14,6 @@ import DotCanvasBackground from "@/components/ui/DotCanvasBackground";
 import TypewriterHeading from "@/components/ui/TypewriterHeading";
 import { createClient } from "@/lib/supabase/client";
 import { useWorkflowStore } from "@/lib/store";
-import { loadAzureBaseUrl, loadAzureTextDeployment, loadAzureTextModelName } from "@/components/SettingsModal";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 import type { User } from "@supabase/supabase-js";
 
@@ -203,8 +202,7 @@ function LandingView({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animatedPlaceholder = useCyclingPlaceholder(!headingDone || input.length > 0);
   const kieKeySet   = useWorkflowStore((s) => s.kieKeySet);
-  const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
-  const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
+  const disabledIds: string[] = [];
   const usesCustomProvider = model.startsWith("custom:");
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -322,8 +320,7 @@ function ChatWindow({
   const [model, setModel] = useState<ModelId>((session.model || defaultModel || "claude-sonnet-4-6") as ModelId);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const kieKeySet   = useWorkflowStore((s) => s.kieKeySet);
-  const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
-  const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
+  const disabledIds: string[] = [];
   const customProviderReady = !model.startsWith("custom:") || !!loadCustomProviderConfig().baseUrl.trim();
   const canSendWithoutKie = customProviderReady && (model.startsWith("custom:") || kieKeySet !== false);
 
@@ -364,11 +361,6 @@ function ChatWindow({
 
     try {
       const token = await getToken();
-      const azureConfig = model === "azure-auto" ? {
-        azureEndpoint:   loadAzureBaseUrl(),
-        azureDeployment: loadAzureTextDeployment(),
-        azureModelName:  loadAzureTextModelName(),
-      } : {};
       const customProvider = model.startsWith("custom:")
         ? { customProvider: loadCustomProviderConfig() }
         : {};
@@ -386,7 +378,6 @@ function ChatWindow({
             ...contextMessages.map((m) => ({ role: m.role, content: m.content })),
           ],
           stream: true,
-          ...azureConfig,
           ...customProvider,
         }),
         signal: abort.signal,

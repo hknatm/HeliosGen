@@ -6,8 +6,6 @@ import { getToken } from "@/lib/galleryUtils";
 import { MODEL_GROUPS, MODELS, type ModelId } from "@/lib/models";
 import { useChatSessionStore } from "@/lib/chatSessionStore";
 import { getSystemPrompt } from "@/lib/systemPrompt";
-import { useWorkflowStore } from "@/lib/store";
-import { loadAzureBaseUrl, loadAzureTextDeployment, loadAzureTextModelName } from "@/components/SettingsModal";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 
 interface Message {
@@ -34,8 +32,7 @@ export function QuickAssist() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { createSession, upsertSession } = useChatSessionStore();
-  const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
-  const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
+  const disabledIds: string[] = [];
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
   const modelGroups = customModels.length > 0
     ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: customModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
@@ -121,11 +118,6 @@ export function QuickAssist() {
       const token = await getToken();
       const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
       if (token) reqHeaders["Authorization"] = `Bearer ${token}`;
-      const azureConfig = model === "azure-auto" ? {
-        azureEndpoint:   loadAzureBaseUrl(),
-        azureDeployment: loadAzureTextDeployment(),
-        azureModelName:  loadAzureTextModelName(),
-      } : {};
       const customProvider = model.startsWith("custom:")
         ? { customProvider: loadCustomProviderConfig() }
         : {};
@@ -141,7 +133,6 @@ export function QuickAssist() {
           stream: true,
           thinkingFlag: true,
           max_tokens: 1024,
-          ...azureConfig,
           ...customProvider,
         }),
         signal: abort.signal,

@@ -1,24 +1,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PROVIDERS — single source of truth for per-model backend selection
-// (Kie.ai / Azure Foundry / Codex CLI), shared by the Settings modal, the
-// workflow GenerateNode, and the gallery generation composer.
+// (Kie.ai / Codex CLI), shared by the Settings modal, the workflow GenerateNode,
+// and the gallery generation composer.
 // ─────────────────────────────────────────────────────────────────────────────
 import { IMAGE_MODELS } from "@/lib/modelConfig";
 
 export const PROVIDERS = [
   { id: "kie",   label: "Kie.ai" },
-  { id: "azure", label: "Azure Foundry" },
   { id: "codex", label: "Codex CLI" },
 ] as const;
 
-export type ProviderId = (typeof PROVIDERS)[number]["id"];
+// Keep the legacy Azure value readable from existing browser storage while no
+// longer exposing it as a selectable provider in this fork.
+export type ProviderId = (typeof PROVIDERS)[number]["id"] | "azure";
 
 const STORAGE_KEY = "aiui-model-providers";
 
 export function loadModelProviders(): Record<string, ProviderId> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const parsed = raw ? JSON.parse(raw) as Record<string, ProviderId> : {};
+    return Object.fromEntries(Object.entries(parsed).map(([modelId, provider]) => [
+      modelId,
+      provider === "azure" ? "kie" : provider,
+    ])) as Record<string, ProviderId>;
   } catch {
     return {};
   }
@@ -32,7 +37,8 @@ export function saveModelProviders(map: Record<string, ProviderId>) {
 }
 
 export function getModelProvider(modelId: string): ProviderId {
-  return loadModelProviders()[modelId] ?? "kie";
+  const provider = loadModelProviders()[modelId];
+  return provider === "azure" ? "kie" : (provider ?? "kie");
 }
 
 /** Persists the backend for a single model, leaving the others untouched. */
@@ -41,12 +47,9 @@ export function setModelProvider(modelId: string, provider: ProviderId) {
   saveModelProviders({ ...map, [modelId]: provider });
 }
 
-/**
- * Models with more than one backend to choose from. Both Azure and Codex are
- * image-only, and Azure additionally needs a per-model deployment configured.
- */
+/** Image models that can use the server's Codex CLI backend. */
 const MULTI_PROVIDER_MODEL_IDS = new Set(
-  IMAGE_MODELS.filter((m) => !!m.azureSizeMap).map((m) => m.id),
+  IMAGE_MODELS.filter((m) => m.id === "gpt-image-2").map((m) => m.id),
 );
 
 export function modelHasProviderChoice(modelId: string): boolean {
