@@ -1,11 +1,14 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import Database from "better-sqlite3";
+import { createHash, randomUUID } from "crypto";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { randomUUID, createHash } from "crypto";
 
 const DATA_DIR = join(process.cwd(), "data");
-const DB_FILE  = join(DATA_DIR, "guest-db.json");
+const DB_FILE = join(DATA_DIR, "heliosgen.db");
+const LEGACY_DB_FILE = join(DATA_DIR, "guest-db.json");
+const LEGACY_MIGRATION = "guest-json-v1";
 
-interface Generation {
+export interface Generation {
   id: string;
   user_id: string | null;
   task_id: string;
@@ -28,7 +31,7 @@ interface Generation {
   updated_at: string;
 }
 
-interface Upload {
+export interface Upload {
   id: string;
   user_id: string;
   r2_url: string;
@@ -37,7 +40,7 @@ interface Upload {
   created_at: string;
 }
 
-interface FolderRecord {
+export interface FolderRecord {
   id: string;
   user_id: string;
   name: string;
@@ -48,39 +51,281 @@ interface FolderRecord {
   color?: string | null;
 }
 
-interface FolderItemRecord {
+export interface FolderItemRecord {
   folder_id: string;
   item_id: string;
   user_id: string;
   created_at: string;
 }
 
-interface GuestDb {
-  generations: Generation[];
-  uploads: Upload[];
-  assetCache: Record<string, { cdn_url: string; mime_type: string; byte_size: number }>;
+interface LegacyGuestDb {
+  generations?: Generation[];
+  uploads?: Upload[];
+  assetCache?: Record<string, { cdn_url: string; mime_type: string; byte_size: number }>;
   settings?: { kie_api_token?: string; azure_api_key?: string };
-  folders: FolderRecord[];
-  folder_items: FolderItemRecord[];
+  folders?: FolderRecord[];
+  folder_items?: FolderItemRecord[];
 }
+
+interface GenerationRow extends Omit<Generation, "sound" | "reference_image_urls" | "image_urls"> {
+  sound: number | null;
+  reference_image_urls: string | null;
+  image_urls: string | null;
+}
+
+let instance: Database.Database | undefined;
 
 function now(): string {
   return new Date().toISOString();
 }
 
-function read(): GuestDb {
-  const defaults: GuestDb = { generations: [], uploads: [], assetCache: {}, folders: [], folder_items: [] };
-  if (!existsSync(DB_FILE)) return defaults;
-  try {
-    const parsed = JSON.parse(readFileSync(DB_FILE, "utf8")) as Partial<GuestDb>;
-    return { ...defaults, ...parsed };
-  }
-  catch { return defaults; }
+function optionalJson(value: unknown): string | null {
+  return value === undefined || value === null ? null : JSON.stringify(value);
 }
 
-function write(data: GuestDb): void {
+function parseStringArray(value: string | null): string[] | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) && parsed.every((item) => typeof item === "string")
+      ? parsed
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toGeneration(row: GenerationRow): Generation {
+  return {
+    ...row,
+    sound: row.sound === null ? undefined : row.sound === 1,
+    reference_image_urls: parseStringArray(row.reference_image_urls),
+    image_urls: parseStringArray(row.image_urls),
+  };
+}
+
+function initializeSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS generations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      task_id TEXT NOT NULL UNIQUE,
+      generation_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      prompt TEXT,
+      model TEXT,
+      aspect_ratio TEXT,
+      quality TEXT,
+      azure_resolution TEXT,
+      duration INTEGER,
+      kling_mode TEXT,
+      sound INTEGER,
+      reference_image_urls TEXT,
+      image_url TEXT,
+      image_urls TEXT,
+      video_url TEXT,
+      error_msg TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS generations_gallery_idx
+      ON generations (user_id, generation_type, status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS uploads (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      r2_url TEXT NOT NULL,
+      mime_type TEXT,
+      source TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS uploads_gallery_idx
+      ON uploads (user_id, mime_type, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS asset_cache (
+      hash TEXT PRIMARY KEY,
+      cdn_url TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      byte_size INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      kie_api_token TEXT,
+      azure_api_key TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS folders (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      parent_id TEXT,
+      order_index INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      color TEXT
+    );
+    CREATE INDEX IF NOT EXISTS folders_user_order_idx
+      ON folders (user_id, order_index);
+
+    CREATE TABLE IF NOT EXISTS folder_items (
+      folder_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (folder_id, item_id)
+    );
+    CREATE INDEX IF NOT EXISTS folder_items_user_idx ON folder_items (user_id);
+  `);
+}
+
+function migrateLegacyJson(db: Database.Database): void {
+  if (!existsSync(LEGACY_DB_FILE)) return;
+
+  let legacy: LegacyGuestDb;
+  try {
+    const parsed = JSON.parse(readFileSync(LEGACY_DB_FILE, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("legacy database root must be an object");
+    }
+    legacy = parsed as LegacyGuestDb;
+  } catch (error) {
+    console.error(`[local-db] Skipping legacy migration for invalid ${LEGACY_DB_FILE}:`, error);
+    db.prepare("INSERT OR IGNORE INTO migrations (name, applied_at) VALUES (?, ?)")
+      .run(LEGACY_MIGRATION, now());
+    return;
+  }
+
+  const migrate = db.transaction(() => {
+    const migrated = db.prepare("SELECT 1 FROM migrations WHERE name = ?").get(LEGACY_MIGRATION);
+    if (migrated) return false;
+
+    const insertGenerationRow = db.prepare(`
+      INSERT OR IGNORE INTO generations (
+        id, user_id, task_id, generation_type, status, prompt, model, aspect_ratio,
+        quality, azure_resolution, duration, kling_mode, sound, reference_image_urls,
+        image_url, image_urls, video_url, error_msg, created_at, updated_at
+      ) VALUES (
+        @id, @user_id, @task_id, @generation_type, @status, @prompt, @model, @aspect_ratio,
+        @quality, @azure_resolution, @duration, @kling_mode, @sound, @reference_image_urls,
+        @image_url, @image_urls, @video_url, @error_msg, @created_at, @updated_at
+      )
+    `);
+    for (const generation of legacy.generations ?? []) {
+      insertGenerationRow.run(generationParams(generation));
+    }
+
+    const insertUploadRow = db.prepare(`
+      INSERT OR IGNORE INTO uploads (id, user_id, r2_url, mime_type, source, created_at)
+      VALUES (@id, @user_id, @r2_url, @mime_type, @source, @created_at)
+    `);
+    for (const upload of legacy.uploads ?? []) {
+      insertUploadRow.run({ ...upload, mime_type: upload.mime_type ?? null });
+    }
+
+    const insertAssetRow = db.prepare(`
+      INSERT OR IGNORE INTO asset_cache (hash, cdn_url, mime_type, byte_size, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const [hash, asset] of Object.entries(legacy.assetCache ?? {})) {
+      insertAssetRow.run(hash, asset.cdn_url, asset.mime_type, asset.byte_size, now());
+    }
+
+    if (legacy.settings) {
+      db.prepare(`
+        INSERT INTO settings (id, kie_api_token, azure_api_key, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          kie_api_token = COALESCE(settings.kie_api_token, excluded.kie_api_token),
+          azure_api_key = COALESCE(settings.azure_api_key, excluded.azure_api_key),
+          updated_at = excluded.updated_at
+      `).run(
+        legacy.settings.kie_api_token ?? null,
+        legacy.settings.azure_api_key ?? null,
+        now(),
+      );
+    }
+
+    const insertFolderRow = db.prepare(`
+      INSERT OR IGNORE INTO folders (
+        id, user_id, name, parent_id, order_index, created_at, updated_at, color
+      ) VALUES (@id, @user_id, @name, @parent_id, @order_index, @created_at, @updated_at, @color)
+    `);
+    for (const folder of legacy.folders ?? []) {
+      insertFolderRow.run({ ...folder, color: folder.color ?? null });
+    }
+
+    const insertFolderItemRow = db.prepare(`
+      INSERT OR IGNORE INTO folder_items (folder_id, item_id, user_id, created_at)
+      VALUES (@folder_id, @item_id, @user_id, @created_at)
+    `);
+    for (const item of legacy.folder_items ?? []) {
+      insertFolderItemRow.run(item);
+    }
+
+    db.prepare("INSERT OR IGNORE INTO migrations (name, applied_at) VALUES (?, ?)")
+      .run(LEGACY_MIGRATION, now());
+    return true;
+  });
+
+  try {
+    if (migrate.immediate()) {
+      console.info(`[local-db] Migrated legacy data from ${LEGACY_DB_FILE}`);
+    }
+  } catch (error) {
+    console.error(`[local-db] Skipping incompatible legacy data in ${LEGACY_DB_FILE}:`, error);
+    db.prepare("INSERT OR IGNORE INTO migrations (name, applied_at) VALUES (?, ?)")
+      .run(LEGACY_MIGRATION, now());
+  }
+}
+
+function getDb(): Database.Database {
+  if (instance) return instance;
   mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf8");
+  const db = new Database(DB_FILE);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("busy_timeout = 30000");
+  initializeSchema(db);
+  migrateLegacyJson(db);
+  instance = db;
+  return db;
+}
+
+function generationParams(
+  data: Omit<Generation, "id" | "created_at" | "updated_at"> | Generation,
+): Record<string, string | number | null> {
+  const createdAt = "created_at" in data ? data.created_at : now();
+  const updatedAt = "updated_at" in data ? data.updated_at : createdAt;
+  return {
+    id: "id" in data ? data.id : randomUUID(),
+    user_id: data.user_id,
+    task_id: data.task_id,
+    generation_type: data.generation_type,
+    status: data.status,
+    prompt: data.prompt ?? null,
+    model: data.model ?? null,
+    aspect_ratio: data.aspect_ratio ?? null,
+    quality: data.quality ?? null,
+    azure_resolution: data.azure_resolution ?? null,
+    duration: data.duration ?? null,
+    kling_mode: data.kling_mode ?? null,
+    sound: data.sound === undefined ? null : data.sound ? 1 : 0,
+    reference_image_urls: optionalJson(data.reference_image_urls),
+    image_url: data.image_url ?? null,
+    image_urls: optionalJson(data.image_urls),
+    video_url: data.video_url ?? null,
+    error_msg: data.error_msg ?? null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
 }
 
 export function hashBuffer(buf: Buffer): string {
@@ -90,136 +335,160 @@ export function hashBuffer(buf: Buffer): string {
 // ── Generations ────────────────────────────────────────────────────────────
 
 export function insertGeneration(data: Omit<Generation, "id" | "created_at" | "updated_at">): void {
-  const db = read();
-  if (db.generations.some((g) => g.task_id === data.task_id)) return;
-  db.generations.push({ ...data, id: randomUUID(), created_at: now(), updated_at: now() });
-  write(db);
+  getDb().prepare(`
+    INSERT OR IGNORE INTO generations (
+      id, user_id, task_id, generation_type, status, prompt, model, aspect_ratio,
+      quality, azure_resolution, duration, kling_mode, sound, reference_image_urls,
+      image_url, image_urls, video_url, error_msg, created_at, updated_at
+    ) VALUES (
+      @id, @user_id, @task_id, @generation_type, @status, @prompt, @model, @aspect_ratio,
+      @quality, @azure_resolution, @duration, @kling_mode, @sound, @reference_image_urls,
+      @image_url, @image_urls, @video_url, @error_msg, @created_at, @updated_at
+    )
+  `).run(generationParams(data));
 }
 
 export function updateGeneration(
   taskId: string,
   updates: Partial<Pick<Generation, "status" | "image_url" | "image_urls" | "video_url" | "error_msg">>,
 ): void {
-  const db = read();
-  const gen = db.generations.find((g) => g.task_id === taskId);
-  if (!gen) return;
-  Object.assign(gen, updates, { updated_at: now() });
-  write(db);
+  const assignments: string[] = [];
+  const params: Record<string, string | null> = { task_id: taskId, updated_at: now() };
+  for (const key of ["status", "image_url", "image_urls", "video_url", "error_msg"] as const) {
+    if (!(key in updates) || updates[key] === undefined) continue;
+    assignments.push(`${key} = @${key}`);
+    const value = updates[key];
+    params[key] = key === "image_urls" ? optionalJson(value) : (value ?? null) as string | null;
+  }
+  if (assignments.length === 0) return;
+  assignments.push("updated_at = @updated_at");
+  getDb().prepare(`UPDATE generations SET ${assignments.join(", ")} WHERE task_id = @task_id`).run(params);
 }
 
 export function recoverJob(
   taskId: string,
 ): Pick<Generation, "status" | "video_url" | "image_url" | "image_urls" | "error_msg"> | null {
-  return read().generations.find((g) => g.task_id === taskId) ?? null;
+  const row = getDb().prepare(`
+    SELECT status, video_url, image_url, image_urls, error_msg
+    FROM generations WHERE task_id = ?
+  `).get(taskId) as Pick<GenerationRow, "status" | "video_url" | "image_url" | "image_urls" | "error_msg"> | undefined;
+  if (!row) return null;
+  return { ...row, image_urls: parseStringArray(row.image_urls) };
 }
 
 export function getGenerations(userId: string, type: "image" | "video"): Generation[] {
-  const urlKey = type === "video" ? "video_url" : "image_url";
-  return read()
-    .generations
-    .filter((g) => g.user_id === userId && g.generation_type === type && g.status === "done" && g[urlKey])
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 1000);
+  const urlColumn = type === "video" ? "video_url" : "image_url";
+  const rows = getDb().prepare(`
+    SELECT * FROM generations
+    WHERE user_id = ? AND generation_type = ? AND status = 'done' AND ${urlColumn} IS NOT NULL
+    ORDER BY created_at DESC LIMIT 1000
+  `).all(userId, type) as GenerationRow[];
+  return rows.map(toGeneration);
 }
 
 export function deleteGeneration(id: string, userId: string): void {
-  const db = read();
-  db.generations = db.generations.filter((g) => !(g.id === id && g.user_id === userId));
-  write(db);
+  getDb().prepare("DELETE FROM generations WHERE id = ? AND user_id = ?").run(id, userId);
 }
 
 // ── Uploads ────────────────────────────────────────────────────────────────
 
 export function insertUpload(data: Omit<Upload, "id" | "created_at">): void {
-  const db = read();
-  db.uploads.push({ ...data, id: randomUUID(), created_at: now() });
-  write(db);
+  getDb().prepare(`
+    INSERT INTO uploads (id, user_id, r2_url, mime_type, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), data.user_id, data.r2_url, data.mime_type ?? null, data.source, now());
 }
 
 export function getUploads(userId: string, mimeTypePrefix: string): Upload[] {
-  return read()
-    .uploads
-    .filter((u) => u.user_id === userId && (u.mime_type ?? "").startsWith(mimeTypePrefix))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 1000);
+  return getDb().prepare(`
+    SELECT * FROM uploads
+    WHERE user_id = ? AND mime_type LIKE ?
+    ORDER BY created_at DESC LIMIT 1000
+  `).all(userId, `${mimeTypePrefix}%`) as Upload[];
 }
 
 export function deleteUpload(id: string, userId: string): void {
-  const db = read();
-  db.uploads = db.uploads.filter((u) => !(u.id === id && u.user_id === userId));
-  write(db);
+  getDb().prepare("DELETE FROM uploads WHERE id = ? AND user_id = ?").run(id, userId);
 }
 
 // ── Asset Cache ────────────────────────────────────────────────────────────
 
 export function lookupAssetHash(hash: string): string | null {
-  const entry = read().assetCache[hash];
-  if (entry) console.log("[guest/asset-cache] HIT:", hash.slice(0, 8));
-  return entry?.cdn_url ?? null;
+  const row = getDb().prepare("SELECT cdn_url FROM asset_cache WHERE hash = ?").get(hash) as
+    | { cdn_url: string }
+    | undefined;
+  if (row) console.log("[local/asset-cache] HIT:", hash.slice(0, 8));
+  return row?.cdn_url ?? null;
 }
 
 export function storeAssetHash(hash: string, cdnUrl: string, mimeType: string, byteSize: number): void {
-  const db = read();
-  db.assetCache[hash] = { cdn_url: cdnUrl, mime_type: mimeType, byte_size: byteSize };
-  write(db);
+  getDb().prepare(`
+    INSERT INTO asset_cache (hash, cdn_url, mime_type, byte_size, created_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(hash) DO UPDATE SET
+      cdn_url = excluded.cdn_url,
+      mime_type = excluded.mime_type,
+      byte_size = excluded.byte_size
+  `).run(hash, cdnUrl, mimeType, byteSize, now());
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────
 
+function getSettings(): { kie_api_token: string | null; azure_api_key: string | null } | undefined {
+  return getDb().prepare("SELECT kie_api_token, azure_api_key FROM settings WHERE id = 1").get() as
+    | { kie_api_token: string | null; azure_api_key: string | null }
+    | undefined;
+}
+
+function updateSetting(column: "kie_api_token" | "azure_api_key", value: string | null): void {
+  getDb().prepare(`
+    INSERT INTO settings (id, ${column}, updated_at) VALUES (1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET ${column} = excluded.${column}, updated_at = excluded.updated_at
+  `).run(value, now());
+}
+
 export function getKieApiToken(): string | null {
-  const dbToken = read().settings?.kie_api_token;
+  const dbToken = getSettings()?.kie_api_token;
   if (dbToken) return dbToken;
   const envToken = process.env.KIE_API_KEY ?? "";
-  // Reject the template placeholder that ships in .env.guest
-  if (!envToken || envToken === "your_kie_api_key_here") return null;
-  return envToken;
+  return !envToken || envToken === "your_kie_api_key_here" ? null : envToken;
 }
 
 export function setKieApiToken(token: string): void {
-  const db = read();
-  db.settings = { ...db.settings, kie_api_token: token };
-  write(db);
+  updateSetting("kie_api_token", token);
 }
 
 export function deleteKieApiToken(): void {
-  const db = read();
-  if (db.settings) delete db.settings.kie_api_token;
-  write(db);
+  updateSetting("kie_api_token", null);
 }
 
 export function getAzureApiKey(): string | null {
-  const dbKey = read().settings?.azure_api_key;
-  if (dbKey) return dbKey;
-  const envKey = process.env.AZURE_API_KEY ?? "";
-  return envKey || null;
+  return getSettings()?.azure_api_key || process.env.AZURE_API_KEY || null;
 }
 
 export function setAzureApiKey(key: string): void {
-  const db = read();
-  db.settings = { ...db.settings, azure_api_key: key };
-  write(db);
+  updateSetting("azure_api_key", key);
 }
 
 export function deleteAzureApiKey(): void {
-  const db = read();
-  if (db.settings) delete db.settings.azure_api_key;
-  write(db);
+  updateSetting("azure_api_key", null);
 }
 
 // ── Folders ────────────────────────────────────────────────────────────────
 
 export function getFolders(userId: string): FolderRecord[] {
-  return read()
-    .folders
-    .filter((f) => f.user_id === userId)
-    .sort((a, b) => a.order_index - b.order_index);
+  return getDb().prepare(`
+    SELECT * FROM folders WHERE user_id = ? ORDER BY order_index ASC
+  `).all(userId) as FolderRecord[];
 }
 
 export function insertFolder(data: Omit<FolderRecord, "created_at" | "updated_at">): FolderRecord {
-  const db = read();
-  const record: FolderRecord = { ...data, created_at: now(), updated_at: now() };
-  db.folders.push(record);
-  write(db);
+  const timestamp = now();
+  const record: FolderRecord = { ...data, created_at: timestamp, updated_at: timestamp };
+  getDb().prepare(`
+    INSERT INTO folders (id, user_id, name, parent_id, order_index, created_at, updated_at, color)
+    VALUES (@id, @user_id, @name, @parent_id, @order_index, @created_at, @updated_at, @color)
+  `).run({ ...record, color: record.color ?? null });
   return record;
 }
 
@@ -228,43 +497,52 @@ export function updateFolder(
   userId: string,
   updates: Partial<Pick<FolderRecord, "name" | "parent_id" | "order_index" | "color">>,
 ): void {
-  const db = read();
-  const folder = db.folders.find((f) => f.id === id && f.user_id === userId);
-  if (!folder) return;
-  Object.assign(folder, updates, { updated_at: now() });
-  write(db);
+  const assignments: string[] = [];
+  const params: Record<string, string | number | null> = { id, user_id: userId, updated_at: now() };
+  for (const key of ["name", "parent_id", "order_index", "color"] as const) {
+    if (!(key in updates)) continue;
+    assignments.push(`${key} = @${key}`);
+    params[key] = updates[key] ?? null;
+  }
+  if (assignments.length === 0) return;
+  assignments.push("updated_at = @updated_at");
+  getDb().prepare(`
+    UPDATE folders SET ${assignments.join(", ")} WHERE id = @id AND user_id = @user_id
+  `).run(params);
 }
 
 export function deleteFolder(id: string, userId: string): void {
-  const db = read();
-  db.folders = db.folders.filter((f) => !(f.id === id && f.user_id === userId));
-  db.folder_items = db.folder_items.filter((fi) => fi.folder_id !== id);
-  write(db);
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("DELETE FROM folder_items WHERE folder_id = ? AND user_id = ?").run(id, userId);
+    db.prepare("DELETE FROM folders WHERE id = ? AND user_id = ?").run(id, userId);
+  })();
 }
 
 // ── Folder Items ───────────────────────────────────────────────────────────
 
 export function getFolderItems(userId: string): FolderItemRecord[] {
-  return read().folder_items.filter((fi) => fi.user_id === userId);
+  return getDb().prepare("SELECT * FROM folder_items WHERE user_id = ?").all(userId) as FolderItemRecord[];
 }
 
 export function insertFolderItems(folderId: string, itemIds: string[], userId: string): void {
-  const db = read();
-  for (const itemId of itemIds) {
-    const exists = db.folder_items.some(
-      (fi) => fi.folder_id === folderId && fi.item_id === itemId,
-    );
-    if (!exists) {
-      db.folder_items.push({ folder_id: folderId, item_id: itemId, user_id: userId, created_at: now() });
-    }
-  }
-  write(db);
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO folder_items (folder_id, item_id, user_id, created_at)
+    VALUES (?, ?, ?, ?)
+  `);
+  db.transaction((ids: string[]) => {
+    for (const itemId of ids) insert.run(folderId, itemId, userId, now());
+  })(itemIds);
 }
 
 export function deleteFolderItems(folderId: string, itemIds: string[], userId: string): void {
-  const db = read();
-  db.folder_items = db.folder_items.filter(
-    (fi) => !(fi.folder_id === folderId && itemIds.includes(fi.item_id) && fi.user_id === userId),
-  );
-  write(db);
+  if (itemIds.length === 0) return;
+  const db = getDb();
+  const remove = db.prepare(`
+    DELETE FROM folder_items WHERE folder_id = ? AND item_id = ? AND user_id = ?
+  `);
+  db.transaction((ids: string[]) => {
+    for (const itemId of ids) remove.run(folderId, itemId, userId);
+  })(itemIds);
 }

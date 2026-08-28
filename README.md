@@ -139,7 +139,7 @@ More models are coming.
 ```bash
 git clone https://github.com/SegFault42/HeliosGen
 cd HeliosGen
-npm install
+pnpm install
 ```
 
 ---
@@ -166,8 +166,11 @@ KIE_API_KEY=your_key
 CALLBACK_BASE_URL=https://xxxx.ngrok-free.app
 ```
 
-Supabase and R2 environment variables are not required in this mode. Existing
-installations using `GUEST_MODE=true` remain supported as a compatibility alias.
+Supabase and R2 environment variables are not required in this mode. Metadata is
+stored in `data/heliosgen.db`, and generated media remains under
+`public/generated/`. Existing installations using `GUEST_MODE=true` remain
+supported as a compatibility alias. On first database access, an existing
+`data/guest-db.json` is imported into SQLite once and left unchanged as a backup.
 
 Start ngrok:
 
@@ -178,14 +181,14 @@ ngrok http 3000
 Run the app in development:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Or build and run the self-hosted production server:
 
 ```bash
-npm run build
-npm start
+pnpm build
+pnpm start
 ```
 
 This is a Node.js server deployment, not a static export. Generated media and
@@ -232,7 +235,7 @@ R2_PUBLIC_URL=
 ### 3c. Run
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ---
@@ -290,7 +293,7 @@ Recommended platforms:
 - Fly.io
 
 ```bash
-npm run build && npm start
+pnpm build && pnpm start
 ```
 
 ---

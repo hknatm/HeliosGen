@@ -44,7 +44,9 @@ next-env.d.ts
 .job-store.json
 .codex-login-store.json
 
-# Guest mode — local DB and generated media
+# Local mode — database, legacy JSON data, and generated media
 /data/*.json
+/data/*.db
+/data/*.db-*
 /public/generated/**
 !/public/generated/.gitkeep

@@ -30,7 +30,7 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: '30mb',
   },
-  serverExternalPackages: ["undici"],
+  serverExternalPackages: ["undici", "better-sqlite3"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "*.r2.dev" },
