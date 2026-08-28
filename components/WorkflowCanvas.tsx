@@ -25,6 +25,7 @@ import { NODE_SIZE, FALLBACK_SIZE, getLastNodeSettings, getDefaultNodeSize } fro
 import { edgeStyle } from "@/lib/edgeStyles";
 import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
+import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 
 import { motion } from "motion/react";
 import TypewriterHeading from "@/components/ui/TypewriterHeading";
@@ -852,7 +853,7 @@ export default function WorkflowCanvas() {
           const tgtId = tgtNode?.id;
           updateNodeDataRef.current(srcId, { extractingFrame: true });
           getAccessToken().then((token) => {
-            if (!token) { updateNodeDataRef.current(srcId, { extractingFrame: false }); return; }
+            if (!token && !IS_LOCAL_MODE) { updateNodeDataRef.current(srcId, { extractingFrame: false }); return; }
             fetch("/api/extract-frame", {
               method: "POST",
               headers: authHeaders(token),
@@ -1125,7 +1126,7 @@ export default function WorkflowCanvas() {
 
   const runAll = useCallback(async () => {
     const token = await getAccessToken();
-    if (!token) {
+    if (!token && !IS_LOCAL_MODE) {
       setAuthModalOpen(true);
       return;
     }

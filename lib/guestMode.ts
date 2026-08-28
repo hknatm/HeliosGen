@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
+import { IS_LOCAL_MODE } from "./runtimeConfig";
 
-export const GUEST_MODE = process.env.GUEST_MODE === "true";
+/** @deprecated Use IS_LOCAL_MODE from runtimeConfig in new code. */
+export const GUEST_MODE = IS_LOCAL_MODE;
 export const GUEST_USER_ID = "guest";
 
 // Returns GUEST_USER_ID in guest mode, Supabase user ID otherwise.

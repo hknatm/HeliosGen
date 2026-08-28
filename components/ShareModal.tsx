@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Copy, Check, Globe, Lock } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store";
+import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 
 interface ShareModalProps {
   spaceId: string;
@@ -30,6 +31,10 @@ export default function ShareModal({ spaceId, open, onClose }: ShareModalProps) 
   if (!open) return null;
 
   async function togglePublic() {
+    if (IS_LOCAL_MODE) {
+      setError("Workflow sharing is not available in local mode yet.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -114,21 +119,23 @@ export default function ShareModal({ spaceId, open, onClose }: ShareModalProps) 
                 {isPublic ? "Public" : "Private"}
               </div>
               <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 2 }}>
-                {isPublic
-                  ? "Anyone with the link can view"
-                  : "Only you can access this workflow"}
+                {IS_LOCAL_MODE
+                  ? "Sharing is not available in local mode yet"
+                  : isPublic
+                    ? "Anyone with the link can view"
+                    : "Only you can access this workflow"}
               </div>
             </div>
           </div>
           <button
             onClick={togglePublic}
-            disabled={loading}
+            disabled={loading || IS_LOCAL_MODE}
             style={{
               height: 28, padding: "0 14px",
               borderRadius: 8, border: "none", cursor: loading ? "wait" : "pointer",
               fontSize: 12, fontWeight: 500,
               transition: "background 150ms, color 150ms, opacity 150ms",
-              opacity: loading ? 0.6 : 1,
+              opacity: loading || IS_LOCAL_MODE ? 0.6 : 1,
               background: isPublic ? "rgba(255,255,255,0.08)" : "rgba(45,212,191,0.15)",
               color: isPublic ? "rgba(255,255,255,0.7)" : "#2DD4BF",
             }}

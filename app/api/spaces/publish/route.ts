@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 
 export async function POST(req: NextRequest) {
+  if (IS_LOCAL_MODE) {
+    return NextResponse.json(
+      { error: "Workflow sharing is not available in local mode yet." },
+      { status: 501 },
+    );
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {

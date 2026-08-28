@@ -144,11 +144,15 @@ npm install
 
 ---
 
-## 2. Guest Mode (quick setup)
+## 2. Local single-user mode (quick setup)
+
+This mode runs with `next dev` or `next build && next start` and does not need
+Supabase or Cloudflare R2. The mode is selected at build time, so rebuild after
+changing `HELIOS_MODE`.
 
 Requirements:
 - Kie.ai API key
-- ngrok
+- A public callback URL such as ngrok when using Kie.ai webhooks
 
 ```bash
 cp .env.guest .env.local
@@ -157,10 +161,13 @@ cp .env.guest .env.local
 Fill your `.env.local`:
 
 ```env
-GUEST_MODE=true
+HELIOS_MODE=local
 KIE_API_KEY=your_key
 CALLBACK_BASE_URL=https://xxxx.ngrok-free.app
 ```
+
+Supabase and R2 environment variables are not required in this mode. Existing
+installations using `GUEST_MODE=true` remain supported as a compatibility alias.
 
 Start ngrok:
 
@@ -168,11 +175,24 @@ Start ngrok:
 ngrok http 3000
 ```
 
-Run the app:
+Run the app in development:
 
 ```bash
 npm run dev
 ```
+
+Or build and run the self-hosted production server:
+
+```bash
+npm run build
+npm start
+```
+
+This is a Node.js server deployment, not a static export. Generated media and
+local persistence require a writable, persistent filesystem. Local mode does
+not authenticate API routes, so treat it as a trusted single-user service. If
+it is internet-accessible, put an authenticated reverse proxy in front of the
+app; expose only the callback endpoint when possible.
 
 ---
 
@@ -195,6 +215,7 @@ Open the **SQL Editor** in your Supabase project and run the two migration files
 Create `.env.local`:
 
 ```env
+HELIOS_MODE=cloud
 CALLBACK_BASE_URL=https://your-domain.com
 
 NEXT_PUBLIC_SUPABASE_URL=
