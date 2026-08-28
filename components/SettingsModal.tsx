@@ -8,14 +8,13 @@ import { PROVIDERS, ProviderId, loadModelProviders, saveModelProviders, getModel
 import {
   CustomProviderConfig,
   CustomProviderModel,
-  CustomProviderModelClassification,
   loadCustomProviderConfig,
   saveCustomProviderConfig,
   loadCustomProviderModels,
   saveCustomProviderModels,
-  setCustomProviderModelClassification,
   syncCustomProviderModels,
 } from "@/lib/customProvider";
+import { DEFAULT_SYSTEM_PROMPTS, loadSystemPrompts, saveSystemPrompts, resetSystemPrompts, type SystemPromptId } from "@/lib/systemPrompt";
 
 /* ─── Provider options (re-exported for backwards compat) ───────────────────── */
 
@@ -107,7 +106,7 @@ export function saveAzureTextModelName(name: string) {
 
 const IS_DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
-type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "debug";
+type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "text-prompts" | "debug";
 
 const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
   {
@@ -160,6 +159,17 @@ const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
         <path d="M12 2a10 10 0 1 0 10 10" />
         <path d="M12 6a6 6 0 1 0 6 6" />
         <path d="M12 10a2 2 0 1 0 2 2" />
+      </svg>
+    ),
+  },
+  {
+    id: "text-prompts",
+    label: "Text Prompts",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 6h16" />
+        <path d="M4 12h10" />
+        <path d="M4 18h13" />
       </svg>
     ),
   },
@@ -1310,12 +1320,8 @@ function CustomProviderPanel() {
     setError(null);
     try {
       const synced = await syncCustomProviderModels(config);
-      // Preserve existing classifications for models that are still present.
-      const existing = loadCustomProviderModels();
-      const merged = synced.map((m) => {
-        const prev = existing.find((e) => e.id === m.id);
-        return prev ? { ...m, chat: prev.chat, image: prev.image } : m;
-      });
+      // All synced models are treated as text/chat models only.
+      const merged = synced.map((m) => ({ ...m, name: m.name || m.id, chat: true, image: false }));
       saveCustomProviderModels(merged);
       setModels(merged);
       setSyncedAt(new Date().toLocaleTimeString());
@@ -1324,11 +1330,6 @@ function CustomProviderPanel() {
     } finally {
       setSyncing(false);
     }
-  };
-
-  const handleClassification = (id: string, key: "chat" | "image", value: boolean) => {
-    setCustomProviderModelClassification(id, { [key]: value } as CustomProviderModelClassification);
-    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, [key]: value } : m)));
   };
 
   const hasModels = models.length > 0;
@@ -1509,41 +1510,162 @@ function CustomProviderPanel() {
                   </div>
                 </div>
 
-                {/* Classification toggles */}
+                {/* All synced models are text/chat models only */}
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-                  {(["chat", "image"] as const).map((kind) => {
-                    const active = m[kind];
-                    return (
-                      <button
-                        key={kind}
-                        id={`custom-provider-${m.id}-${kind}`}
-                        onClick={() => handleClassification(m.id, kind, !active)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          border: "1px solid",
-                          cursor: "pointer",
-                          fontSize: "11px",
-                          fontWeight: 500,
-                          whiteSpace: "nowrap",
-                          transition: "background 140ms ease, color 140ms ease, border-color 140ms ease",
-                          background: active ? "rgba(167,139,250,0.12)" : "transparent",
-                          borderColor: active ? "rgba(167,139,250,0.35)" : "rgba(255,255,255,0.1)",
-                          color: active ? "rgba(196,181,253,0.9)" : "rgba(255,255,255,0.35)",
-                        }}
-                      >
-                        {kind === "chat" ? "Chat" : "Image"}
-                      </button>
-                    );
-                  })}
+                  <span
+                    style={{
+                      display: "flex", alignItems: "center", gap: "5px",
+                      padding: "4px 10px", borderRadius: "6px",
+                      background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.25)",
+                      fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em",
+                      color: "rgba(196,181,253,0.85)", textTransform: "uppercase", whiteSpace: "nowrap",
+                    }}
+                  >
+                    Chat
+                  </span>
                 </div>
               </div>
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Text Prompts panel ────────────────────────────────────────────────────── */
+
+interface TextPromptSpec {
+  id: SystemPromptId;
+  title: string;
+  description: string;
+}
+
+const TEXT_PROMPT_SPECS: TextPromptSpec[] = [
+  { id: "chat", title: "Chat", description: "Used by the workspace chat and Quick Assist to craft better image/video prompts." },
+  { id: "assistantNode", title: "Assistant Node", description: "Used by the Assistant node to rewrite a prompt into a clearer, more effective version." },
+  { id: "workflowRun", title: "Workflow Run", description: "Used when rewriting a prompt during a workflow run." },
+];
+
+function TextPromptsPanel() {
+  const [drafts, setDrafts] = useState<Record<SystemPromptId, string>>(() => loadSystemPrompts());
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [resetFlash, setResetFlash] = useState(false);
+
+  useEffect(() => {
+    const refresh = () => setDrafts(loadSystemPrompts());
+    window.addEventListener("aiui-system-prompts-changed", refresh);
+    return () => window.removeEventListener("aiui-system-prompts-changed", refresh);
+  }, []);
+
+  const handleSave = () => {
+    saveSystemPrompts(drafts);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  const handleReset = () => {
+    const next = { ...DEFAULT_SYSTEM_PROMPTS };
+    setDrafts(next);
+    resetSystemPrompts();
+    setResetFlash(true);
+    setTimeout(() => setResetFlash(false), 1500);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+      {/* Header */}
+      <div>
+        <h2 style={{ fontSize: "17px", fontWeight: 600, color: "rgba(255,255,255,0.9)", margin: 0, lineHeight: 1.2 }}>
+          Text Prompts
+        </h2>
+        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.28)", marginTop: "6px", lineHeight: 1.5 }}>
+          Edit the system prompts used across text/chat features. Changes are stored locally in your browser.
+        </p>
+      </div>
+
+      {/* Prompt editors */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        {TEXT_PROMPT_SPECS.map((spec, i) => (
+          <div
+            key={spec.id}
+            style={{
+              display: "flex", flexDirection: "column", gap: "8px",
+              padding: "16px",
+              background: i % 2 === 0 ? "rgba(167,139,250,0.04)" : "rgba(74,222,128,0.04)",
+              border: i % 2 === 0 ? "1px solid rgba(167,139,250,0.14)" : "1px solid rgba(74,222,128,0.14)",
+              borderRadius: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span
+                style={{
+                  display: "inline-block", width: "6px", height: "6px", borderRadius: "50%",
+                  background: i % 2 === 0 ? "#a78bfa" : "#5EEAD4", flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                {spec.title}
+              </span>
+            </div>
+            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.5 }}>
+              {spec.description}
+            </p>
+            <textarea
+              id={`text-prompt-${spec.id}`}
+              value={drafts[spec.id]}
+              onChange={(e) => setDrafts((prev) => ({ ...prev, [spec.id]: e.target.value }))}
+              rows={5}
+              spellCheck={false}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "7px",
+                padding: "9px 11px",
+                fontSize: "12px",
+                lineHeight: 1.5,
+                color: "rgba(255,255,255,0.8)",
+                outline: "none",
+                fontFamily: "inherit",
+                resize: "vertical",
+                minHeight: "96px",
+              }}
+              onFocus={(e) => { (e.target as HTMLTextAreaElement).style.borderColor = "rgba(255,255,255,0.2)"; }}
+              onBlur={(e)  => { (e.target as HTMLTextAreaElement).style.borderColor = "rgba(255,255,255,0.08)"; }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <button
+          id="text-prompts-save"
+          onClick={handleSave}
+          style={{
+            padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer",
+            background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.85)",
+            fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap",
+            transition: "background 140ms ease, color 140ms ease",
+          }}
+        >
+          {savedFlash ? "Saved" : "Save prompts"}
+        </button>
+        <button
+          id="text-prompts-reset"
+          onClick={handleReset}
+          style={{
+            padding: "8px 16px", borderRadius: "8px",
+            border: "1px solid rgba(239,68,68,0.3)",
+            background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.7)",
+            cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap",
+            transition: "background 140ms ease, color 140ms ease",
+          }}
+        >
+          {resetFlash ? "Reset" : "Reset to defaults"}
+        </button>
       </div>
     </div>
   );
@@ -1963,6 +2085,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               />
             )}
             {activeNav === "custom-provider" && <CustomProviderPanel />}
+            {activeNav === "text-prompts" && <TextPromptsPanel />}
             {activeNav === "debug" && IS_DEBUG && <DebugPanel />}
           </div>
         </div>

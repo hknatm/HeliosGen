@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useChatSessionStore, type StoredMessage, type ChatSession } from "@/lib/chatSessionStore";
 import { getToken } from "@/lib/galleryUtils";
 import { MODEL_GROUPS, MODELS, type ModelId } from "@/lib/models";
-import { SYSTEM_PROMPT } from "@/lib/systemPrompt";
+import { getSystemPrompt } from "@/lib/systemPrompt";
 import { Send, ChevronUp, Copy, Check } from "lucide-react";
 import { motion } from "motion/react";
 import Image from "next/image";
@@ -45,10 +45,10 @@ function ModelPicker({
     return () => window.removeEventListener("pointerdown", onPointer);
   }, []);
 
-  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((m) => m.chat));
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
 
   useEffect(() => {
-    const refresh = () => setCustomModels(loadCustomProviderModels().filter((m) => m.chat));
+    const refresh = () => setCustomModels(loadCustomProviderModels());
     window.addEventListener("aiui-custom-provider-models-changed", refresh);
     return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
   }, []);
@@ -88,13 +88,8 @@ function ModelPicker({
         />
       </button>
       {open && (
-        <div style={{
-          position: "absolute", right: 0, ...dropPos,
-          minWidth: "180px", background: "rgba(14,16,18,0.98)",
-          border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.6)", overflow: "hidden", zIndex: 100,
-        }}>
-          <div style={{ padding: "4px" }}>
+        <div style={{ position: "absolute", right: 0, ...dropPos, minWidth: "180px", background: "rgba(14,16,18,0.98)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", boxShadow: "0 8px 32px rgba(0,0,0,0.6)", overflow: "hidden", zIndex: 100 }}>
+          <div style={{ padding: "4px", maxHeight: "min(300px, 55vh)", overflowY: "auto" }}>
             {modelGroups.map((group, gi) => (
               <div key={group.label}>
                 {gi > 0 && <div style={{ height: "1px", background: "rgba(255,255,255,0.07)", margin: "4px 0" }} />}
@@ -329,6 +324,8 @@ function ChatWindow({
   const kieKeySet   = useWorkflowStore((s) => s.kieKeySet);
   const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
   const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
+  const customProviderReady = !model.startsWith("custom:") || !!loadCustomProviderConfig().baseUrl.trim();
+  const canSendWithoutKie = customProviderReady && (model.startsWith("custom:") || kieKeySet !== false);
 
   function handleModelChange(id: ModelId) { setModel(id); onModelChange?.(id); }
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -385,7 +382,7 @@ function ChatWindow({
         body: JSON.stringify({
           model,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: getSystemPrompt("chat") },
             ...contextMessages.map((m) => ({ role: m.role, content: m.content })),
           ],
           stream: true,
@@ -478,7 +475,7 @@ function ChatWindow({
             />
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "12px", flexShrink: 0 }}>
               <ModelPicker model={model} onChange={handleModelChange} direction="down" disabledIds={disabledIds} />
-              <button onClick={() => send(input)} disabled={!input.trim() || kieKeySet === false || disabledIds.includes(model)} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "none", background: input.trim() && kieKeySet !== false && !disabledIds.includes(model) ? "rgba(45,212,191,0.25)" : "rgba(255,255,255,0.07)", color: input.trim() && kieKeySet !== false && !disabledIds.includes(model) ? "rgba(45,212,191,0.9)" : "rgba(255,255,255,0.25)", cursor: input.trim() && kieKeySet !== false && !disabledIds.includes(model) ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 150ms, color 150ms" }}>
+              <button onClick={() => send(input)} disabled={!input.trim() || !canSendWithoutKie || disabledIds.includes(model)} style={{ width: "36px", height: "36px", borderRadius: "50%", border: "none", background: input.trim() && canSendWithoutKie && !disabledIds.includes(model) ? "rgba(45,212,191,0.25)" : "rgba(255,255,255,0.07)", color: input.trim() && canSendWithoutKie && !disabledIds.includes(model) ? "rgba(45,212,191,0.9)" : "rgba(255,255,255,0.25)", cursor: input.trim() && canSendWithoutKie && !disabledIds.includes(model) ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 150ms, color 150ms" }}>
                 <Send size={15} />
               </button>
             </div>
@@ -586,12 +583,12 @@ function ChatWindow({
             <ModelPicker model={model} onChange={handleModelChange} disabledIds={disabledIds} />
             <button
               onClick={() => send(input)}
-              disabled={!input.trim() || isStreaming || kieKeySet === false || disabledIds.includes(model)}
+              disabled={!input.trim() || isStreaming || !canSendWithoutKie || disabledIds.includes(model)}
               style={{
                 width: "32px", height: "32px", borderRadius: "8px", border: "none",
-                background: input.trim() && !isStreaming && kieKeySet !== false && !disabledIds.includes(model) ? "rgba(45,212,191,0.25)" : "rgba(255,255,255,0.07)",
-                color: input.trim() && !isStreaming && kieKeySet !== false && !disabledIds.includes(model) ? "rgba(45,212,191,0.9)" : "rgba(255,255,255,0.25)",
-                cursor: input.trim() && !isStreaming && kieKeySet !== false && !disabledIds.includes(model) ? "pointer" : "not-allowed",
+                background: input.trim() && !isStreaming && canSendWithoutKie && !disabledIds.includes(model) ? "rgba(45,212,191,0.25)" : "rgba(255,255,255,0.07)",
+                color: input.trim() && !isStreaming && canSendWithoutKie && !disabledIds.includes(model) ? "rgba(45,212,191,0.9)" : "rgba(255,255,255,0.25)",
+                cursor: input.trim() && !isStreaming && canSendWithoutKie && !disabledIds.includes(model) ? "pointer" : "not-allowed",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 flexShrink: 0, transition: "background 150ms, color 150ms",
               }}

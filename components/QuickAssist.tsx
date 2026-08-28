@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getToken } from "@/lib/galleryUtils";
 import { MODEL_GROUPS, MODELS, type ModelId } from "@/lib/models";
 import { useChatSessionStore } from "@/lib/chatSessionStore";
-import { SYSTEM_PROMPT } from "@/lib/systemPrompt";
+import { getSystemPrompt } from "@/lib/systemPrompt";
 import { useWorkflowStore } from "@/lib/store";
 import { loadAzureBaseUrl, loadAzureTextDeployment, loadAzureTextModelName } from "@/components/SettingsModal";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
@@ -36,13 +36,13 @@ export function QuickAssist() {
   const { createSession, upsertSession } = useChatSessionStore();
   const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
   const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
-  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((m) => m.chat));
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
   const modelGroups = customModels.length > 0
     ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: customModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
     : MODEL_GROUPS;
 
   useEffect(() => {
-    const refresh = () => setCustomModels(loadCustomProviderModels().filter((m) => m.chat));
+    const refresh = () => setCustomModels(loadCustomProviderModels());
     window.addEventListener("aiui-custom-provider-models-changed", refresh);
     return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
   }, []);
@@ -135,7 +135,7 @@ export function QuickAssist() {
         body: JSON.stringify({
           model,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: getSystemPrompt("chat") },
             ...newMessages.map(m => ({ role: m.role, content: m.content })),
           ],
           stream: true,

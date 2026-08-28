@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
+import { getSystemPrompt } from "@/lib/systemPrompt";
 
 type AssistantNodeType = Node<NodeData, "assistantNode">;
 
@@ -50,14 +51,14 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const outputText = (data.outputText as string) ?? "";
   const localPrompt = (data.localPrompt as string) ?? "";
   const model = (data.model as string) ?? "claude-sonnet-4-6";
-  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((item) => item.chat));
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
   const modelOptions = [
     ...MODELS,
     ...customModels.map((item) => ({ id: customModelId(item.id), label: item.name })),
   ];
 
   useEffect(() => {
-    const refresh = () => setCustomModels(loadCustomProviderModels().filter((item) => item.chat));
+    const refresh = () => setCustomModels(loadCustomProviderModels());
     window.addEventListener("aiui-custom-provider-models-changed", refresh);
     return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
   }, []);
@@ -92,6 +93,8 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   }, [modelOpen]);
 
   const busy = loading || status === "running";
+  const customProviderReady = !model.startsWith("custom:") || !!loadCustomProviderConfig().baseUrl.trim();
+  const canGenerate = customProviderReady && (model.startsWith("custom:") || kieKeySet !== false);
 
   useGeneratingBorderAnimation(cardRef, busy);
 
@@ -160,8 +163,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         body: JSON.stringify({
           prompt: localPrompt,
           model,
-          systemPrompt:
-            "You are a senior prompt engineer specializing in optimizing prompts for clarity, precision, and effectiveness. Your task is to take an existing user prompt and rewrite it to improve its structure, specificity, and performance for an AI model. Preserve the original intent while enhancing wording, removing ambiguity, and adding useful detail where appropriate. Do not change the task itself. Output only the improved prompt. Do not include any explanations, comments, formatting markers, or quotation marks.",
+          systemPrompt: getSystemPrompt("assistantNode"),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
         signal: controller.signal,
@@ -418,7 +420,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 Stop
               </button>
             ) : (
-              <GenerateButton onClick={handleGenerate} disabled={!hasPrompt || kieKeySet === false} />
+              <GenerateButton onClick={handleGenerate} disabled={!hasPrompt || !canGenerate} />
             ))}
           </div>
         </div>

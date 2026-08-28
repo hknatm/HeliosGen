@@ -27,6 +27,7 @@ import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 import { loadCustomProviderConfig } from "@/lib/customProvider";
+import { getSystemPrompt } from "@/lib/systemPrompt";
 
 import { motion } from "motion/react";
 import TypewriterHeading from "@/components/ui/TypewriterHeading";
@@ -1175,10 +1176,7 @@ export default function WorkflowCanvas() {
         const imageUrls = upstream.imageUrls;
         const aspectRatio = node.data.aspectRatio ?? "1:1";
         const quality = node.data.quality ?? "1k";
-        const customProvider = typeof node.data.model === "string" && node.data.model.startsWith("custom:")
-          ? loadCustomProviderConfig()
-          : undefined;
-        const payload = { prompt, imageUrls, model: node.data.model, aspectRatio, quality, ...(customProvider ? { customProvider } : {}) };
+        const payload = { prompt, imageUrls, model: node.data.model, aspectRatio, quality };
 
         if (!prompt?.trim()) {
           const promptNodeId = edges.find(
@@ -1274,7 +1272,7 @@ export default function WorkflowCanvas() {
             body: JSON.stringify({
               prompt,
               model,
-              systemPrompt: "You are an expert prompt engineer. Rewrite the user's prompt to be clearer, more specific, and more effective for an AI model. Output only the improved prompt — no explanation, no preamble, no quotes, no commentary of any kind.",
+              systemPrompt: getSystemPrompt("workflowRun"),
               ...(customProvider ? { customProvider } : {}),
             }),
           });

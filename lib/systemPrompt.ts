@@ -1,5 +1,7 @@
-export const SYSTEM_PROMPT = `
-You are an elite AI prompt crafter specialized in image and video generation prompts.
+export type SystemPromptId = "chat" | "assistantNode" | "workflowRun";
+
+export const DEFAULT_SYSTEM_PROMPTS: Record<SystemPromptId, string> = {
+  chat: `You are an elite AI prompt crafter specialized in image and video generation prompts.
 
 Your ONLY job is to help users craft, improve, or generate prompts for AI image and video generation models.
 
@@ -31,5 +33,45 @@ For on-topic requests (prompt crafting and generation):
 
 - Keep prompts concise but highly descriptive.
 - Never ask follow-up questions.
-- Always generate the best possible final prompt immediately.
-`.trim();
+- Always generate the best possible final prompt immediately.`,
+  assistantNode: "You are a senior prompt engineer specializing in optimizing prompts for clarity, precision, and effectiveness. Your task is to take an existing user prompt and rewrite it to improve its structure, specificity, and performance for an AI model. Preserve the original intent while enhancing wording, removing ambiguity, and adding useful detail where appropriate. Do not change the task itself. Output only the improved prompt. Do not include any explanations, comments, formatting markers, or quotation marks.",
+  workflowRun: "You are an expert prompt engineer. Rewrite the user's prompt to be clearer, more specific, and more effective for an AI model. Output only the improved prompt — no explanation, no preamble, no quotes, no commentary of any kind.",
+};
+
+const STORAGE_KEY = "aiui-system-prompts";
+
+export function loadSystemPrompts(): Record<SystemPromptId, string> {
+  if (typeof window === "undefined") return { ...DEFAULT_SYSTEM_PROMPTS };
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Partial<Record<SystemPromptId, unknown>>;
+    return (Object.keys(DEFAULT_SYSTEM_PROMPTS) as SystemPromptId[]).reduce((prompts, id) => {
+      prompts[id] = typeof stored[id] === "string" && stored[id].trim()
+        ? stored[id].trim()
+        : DEFAULT_SYSTEM_PROMPTS[id];
+      return prompts;
+    }, { ...DEFAULT_SYSTEM_PROMPTS });
+  } catch {
+    return { ...DEFAULT_SYSTEM_PROMPTS };
+  }
+}
+
+export function getSystemPrompt(id: SystemPromptId): string {
+  return loadSystemPrompts()[id];
+}
+
+export function saveSystemPrompts(prompts: Record<SystemPromptId, string>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prompts));
+    window.dispatchEvent(new CustomEvent("aiui-system-prompts-changed"));
+  } catch { /* noop */ }
+}
+
+export function resetSystemPrompts(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent("aiui-system-prompts-changed"));
+  } catch { /* noop */ }
+}
+
+/** @deprecated Use getSystemPrompt("chat") in client components. */
+export const SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPTS.chat;

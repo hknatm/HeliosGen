@@ -117,8 +117,10 @@ export function loadCustomProviderModels(): CustomProviderModel[] {
       .map((m) => ({
         id: m.id as string,
         name: typeof m.name === "string" ? m.name : (m.id as string),
-        chat: !!m.chat,
-        image: !!m.image,
+        // Custom endpoints are currently text/chat-only. Normalize legacy
+        // classification data so existing browser storage follows that rule.
+        chat: true,
+        image: false,
       }));
   } catch {
     return [];
