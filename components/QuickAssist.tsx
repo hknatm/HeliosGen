@@ -8,6 +8,7 @@ import { useChatSessionStore } from "@/lib/chatSessionStore";
 import { SYSTEM_PROMPT } from "@/lib/systemPrompt";
 import { useWorkflowStore } from "@/lib/store";
 import { loadAzureBaseUrl, loadAzureTextDeployment, loadAzureTextModelName } from "@/components/SettingsModal";
+import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 
 interface Message {
   role: "user" | "assistant";
@@ -35,6 +36,16 @@ export function QuickAssist() {
   const { createSession, upsertSession } = useChatSessionStore();
   const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
   const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((m) => m.chat));
+  const modelGroups = customModels.length > 0
+    ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: customModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
+    : MODEL_GROUPS;
+
+  useEffect(() => {
+    const refresh = () => setCustomModels(loadCustomProviderModels().filter((m) => m.chat));
+    window.addEventListener("aiui-custom-provider-models-changed", refresh);
+    return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+  }, []);
 
   // Track auth state
   useEffect(() => {
@@ -115,6 +126,9 @@ export function QuickAssist() {
         azureDeployment: loadAzureTextDeployment(),
         azureModelName:  loadAzureTextModelName(),
       } : {};
+      const customProvider = model.startsWith("custom:")
+        ? { customProvider: loadCustomProviderConfig() }
+        : {};
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: reqHeaders,
@@ -128,6 +142,7 @@ export function QuickAssist() {
           thinkingFlag: true,
           max_tokens: 1024,
           ...azureConfig,
+          ...customProvider,
         }),
         signal: abort.signal,
       });
@@ -301,7 +316,7 @@ export function QuickAssist() {
                 {modelOpen && (
                   <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, minWidth: "180px", background: "rgba(18,20,23,0.98)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", boxShadow: "0 -8px 32px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)", overflow: "hidden", zIndex: 10, animation: "qaSlideDown 120ms cubic-bezier(0.16,1,0.3,1)" }}>
                     <div style={{ padding: "4px" }}>
-                      {MODEL_GROUPS.map((group, gi) => (
+                      {modelGroups.map((group, gi) => (
                         <div key={group.label}>
                           {gi > 0 && <div style={{ height: "1px", background: "rgba(255,255,255,0.07)", margin: "4px 0" }} />}
                           <div style={{ padding: "4px 8px 2px", fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)" }}>{group.label}</div>

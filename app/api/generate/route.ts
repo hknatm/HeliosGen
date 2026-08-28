@@ -12,6 +12,7 @@ import { IMAGE_MODELS, validateAzureCustomSize } from "@/lib/modelConfig";
 import { getKieTokenForUser } from "@/lib/getKieToken";
 import { getAzureKeyForUser } from "@/lib/getAzureKey";
 import { GUEST_MODE, resolveUserId } from "@/lib/guestMode";
+import { customModelName, customProviderHeaders, customProviderUrl, isCustomModelId } from "@/lib/customProvider";
 import * as guestDb from "@/lib/guest/db";
 
 const BASE   = "https://api.kie.ai";
@@ -266,6 +267,7 @@ export async function POST(req: NextRequest) {
     azureCustomWidth,
     azureCustomHeight,
     codexProvider,
+    customProvider,
     debugOnly,
   } = (await req.json()) as {
     model?:              string;
@@ -280,6 +282,7 @@ export async function POST(req: NextRequest) {
     azureCustomWidth?:   number;     // manual size — used when aspectRatio === "custom"
     azureCustomHeight?:  number;
     codexProvider?:      boolean;    // route through the server's local codex-imagegen CLI
+    customProvider?:     { baseUrl?: string; apiKey?: string };
     debugOnly?:          boolean;
   };
 
@@ -290,6 +293,47 @@ export async function POST(req: NextRequest) {
   }
 
   if (!prompt?.trim()) return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+
+  if (isCustomModelId(model)) {
+    let customUrl: string;
+    try {
+      customUrl = customProviderUrl(customProvider?.baseUrl ?? "", "/images/generations");
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid custom provider URL." }, { status: 400 });
+    }
+    try {
+      const upstream = await fetch(customUrl, {
+        method: "POST",
+        cache: "no-store",
+        headers: customProviderHeaders(customProvider?.apiKey),
+        body: JSON.stringify({
+          model: customModelName(model), prompt: prompt.trim(), n: 1,
+          ...(aspectRatio !== "auto" ? { size: aspectRatio } : {}),
+          ...(imageUrls.length > 0 ? { image_urls: imageUrls } : {}),
+        }),
+      });
+      const raw = await upstream.text();
+      if (!upstream.ok) return NextResponse.json({ error: raw || `Custom provider returned ${upstream.status}` }, { status: upstream.status });
+      const payload = JSON.parse(raw) as { data?: Array<{ url?: string; b64_json?: string }> };
+      const result = payload.data?.[0];
+      const imageUrl = result?.url ?? (result?.b64_json ? await uploadBuffer(Buffer.from(result.b64_json, "base64"), "image/png", "generated") : undefined);
+      if (!imageUrl) return NextResponse.json({ error: "Custom provider returned no image URL or image data." }, { status: 502 });
+
+      const taskId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      jobStore.set(taskId, { status: "done", imageUrl });
+      const userId = await resolveUserId(req).catch(() => null);
+      if (GUEST_MODE) {
+        guestDb.insertGeneration({ task_id: taskId, user_id: userId, generation_type: "image", status: "done", image_url: imageUrl, prompt: prompt.slice(0, 2000), model, aspect_ratio: aspectRatio, quality });
+      } else {
+        supabaseAdmin.from("generations").insert({ task_id: taskId, user_id: userId, generation_type: "image", status: "done", image_url: imageUrl, prompt: prompt.slice(0, 2000), model, aspect_ratio: aspectRatio, quality }).then(({ error }) => {
+          if (error) console.error("[custom-provider] supabase insert error:", error.message);
+        });
+      }
+      return NextResponse.json({ taskId, imageUrl });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Custom image generation failed." }, { status: 502 });
+    }
+  }
 
   const cfg = IMAGE_MODELS.find((m) => m.id === model);
   if (!cfg) return NextResponse.json({ error: `Unknown model: ${model}` }, { status: 400 });

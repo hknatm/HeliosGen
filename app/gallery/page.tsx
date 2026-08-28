@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } fr
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { IMAGE_MODELS, VIDEO_MODELS, AZURE_POPULAR_SIZES, validateAzureCustomSize } from "@/lib/modelConfig";
+import { IMAGE_MODELS, VIDEO_MODELS, AZURE_POPULAR_SIZES, validateAzureCustomSize, type ImageModel } from "@/lib/modelConfig";
 import { PROVIDERS, getModelProvider, setModelProvider, modelHasProviderChoice } from "@/lib/providers";
 import { useWorkflowStore } from "@/lib/store";
 import type { User } from "@supabase/supabase-js";
@@ -17,8 +17,25 @@ import DotCanvasBackground from "@/components/ui/DotCanvasBackground";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Button } from "@/components/ui/button";
 import { browserNotify, requestNotificationPermission } from "@/lib/browserNotify";
+import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+function customImageModelsFromStorage(): ImageModel[] {
+  return loadCustomProviderModels()
+    .filter((model) => model.image)
+    .map((model) => ({
+      id: customModelId(model.id),
+      apiId: model.id,
+      name: model.name,
+      provider: loadCustomProviderConfig().name.trim() || "Custom Provider",
+      ratios: ["auto"],
+      supportsImages: false,
+      maxImages: 0,
+      supportsQuality: false,
+      apiInput: { aspectRatioKey: "size", promptMaxLength: 32000 },
+    }));
+}
 
 const DEMO_GALLERY_ITEMS: import("@/lib/galleryUtils").GalleryItem[] = [
   {
@@ -988,7 +1005,14 @@ function GalleryInner() {
   const preDragSelectedIdsRef = useRef<Set<string>>(new Set());
 
   const isVideo = tab === "videos";
-  const models = isVideo ? VIDEO_MODELS : IMAGE_MODELS;
+  const [customImageModels, setCustomImageModels] = useState<ImageModel[]>(() => customImageModelsFromStorage());
+  const models = isVideo ? VIDEO_MODELS : [...IMAGE_MODELS, ...customImageModels];
+
+  useEffect(() => {
+    const refresh = () => setCustomImageModels(customImageModelsFromStorage());
+    window.addEventListener("aiui-custom-provider-models-changed", refresh);
+    return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+  }, []);
 
   const skipNextModelEffect = useRef(false);
 
@@ -2052,6 +2076,7 @@ function GalleryInner() {
       const providerForModel = (() => { try { return JSON.parse(localStorage.getItem("aiui-model-providers") ?? "{}")[modelId] ?? "kie"; } catch { return "kie"; } })();
       const isAzure = !!(azureBaseUrl && azureDeployment && providerForModel === "azure");
       const isCodex = providerForModel === "codex";
+      const customProvider = modelId.startsWith("custom:") ? loadCustomProviderConfig() : undefined;
 
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -2063,6 +2088,7 @@ function GalleryInner() {
             ...(aspectRatio === "custom" ? { azureCustomWidth, azureCustomHeight } : {}),
           } : {}),
           ...(isCodex ? { codexProvider: true } : {}),
+          ...(customProvider ? { customProvider } : {}),
         }),
       });
       const text = await res.text();

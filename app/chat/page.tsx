@@ -15,6 +15,7 @@ import TypewriterHeading from "@/components/ui/TypewriterHeading";
 import { createClient } from "@/lib/supabase/client";
 import { useWorkflowStore } from "@/lib/store";
 import { loadAzureBaseUrl, loadAzureTextDeployment, loadAzureTextModelName } from "@/components/SettingsModal";
+import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 import type { User } from "@supabase/supabase-js";
 
 // ── Logo ──────────────────────────────────────────────────────────────────────
@@ -44,7 +45,18 @@ function ModelPicker({
     return () => window.removeEventListener("pointerdown", onPointer);
   }, []);
 
-  const current = MODELS.find(m => m.id === model);
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((m) => m.chat));
+
+  useEffect(() => {
+    const refresh = () => setCustomModels(loadCustomProviderModels().filter((m) => m.chat));
+    window.addEventListener("aiui-custom-provider-models-changed", refresh);
+    return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+  }, []);
+
+  const modelGroups = customModels.length > 0
+    ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: customModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
+    : MODEL_GROUPS;
+  const current = modelGroups.flatMap((group) => group.models).find(m => m.id === model) ?? MODELS.find(m => m.id === model);
   const dropPos = direction === "up"
     ? { bottom: "calc(100% + 6px)" }
     : { top: "calc(100% + 6px)" };
@@ -83,7 +95,7 @@ function ModelPicker({
           boxShadow: "0 8px 32px rgba(0,0,0,0.6)", overflow: "hidden", zIndex: 100,
         }}>
           <div style={{ padding: "4px" }}>
-            {MODEL_GROUPS.map((group, gi) => (
+            {modelGroups.map((group, gi) => (
               <div key={group.label}>
                 {gi > 0 && <div style={{ height: "1px", background: "rgba(255,255,255,0.07)", margin: "4px 0" }} />}
                 <div style={{ padding: "4px 8px 2px", fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)" }}>
@@ -198,6 +210,7 @@ function LandingView({
   const kieKeySet   = useWorkflowStore((s) => s.kieKeySet);
   const azureKeySet = useWorkflowStore((s) => s.azureKeySet);
   const disabledIds = azureKeySet === true ? [] : ["azure-auto"];
+  const usesCustomProvider = model.startsWith("custom:");
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -267,12 +280,12 @@ function LandingView({
             <ModelPicker model={model} onChange={onModelChange} direction="down" disabledIds={disabledIds} />
             <button
               onClick={() => submit(input)}
-              disabled={!input.trim() || kieKeySet === false || disabledIds.includes(model)}
+              disabled={!input.trim() || (!usesCustomProvider && kieKeySet === false) || disabledIds.includes(model)}
               style={{
                 width: "36px", height: "36px", borderRadius: "50%", border: "none",
-                background: input.trim() && kieKeySet !== false && !disabledIds.includes(model) ? "rgba(45,212,191,0.25)" : "rgba(255,255,255,0.07)",
-                color: input.trim() && kieKeySet !== false && !disabledIds.includes(model) ? "rgba(45,212,191,0.9)" : "rgba(255,255,255,0.25)",
-                cursor: input.trim() && kieKeySet !== false && !disabledIds.includes(model) ? "pointer" : "not-allowed",
+                background: input.trim() && (usesCustomProvider || kieKeySet !== false) && !disabledIds.includes(model) ? "rgba(45,212,191,0.25)" : "rgba(255,255,255,0.07)",
+                color: input.trim() && (usesCustomProvider || kieKeySet !== false) && !disabledIds.includes(model) ? "rgba(45,212,191,0.9)" : "rgba(255,255,255,0.25)",
+                cursor: input.trim() && (usesCustomProvider || kieKeySet !== false) && !disabledIds.includes(model) ? "pointer" : "not-allowed",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 flexShrink: 0, transition: "background 150ms, color 150ms",
               }}
@@ -359,6 +372,9 @@ function ChatWindow({
         azureDeployment: loadAzureTextDeployment(),
         azureModelName:  loadAzureTextModelName(),
       } : {};
+      const customProvider = model.startsWith("custom:")
+        ? { customProvider: loadCustomProviderConfig() }
+        : {};
 
       const res = await fetch("/api/assistant", {
         method: "POST",
@@ -374,6 +390,7 @@ function ChatWindow({
           ],
           stream: true,
           ...azureConfig,
+          ...customProvider,
         }),
         signal: abort.signal,
       });

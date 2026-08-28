@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getKieToken } from "@/lib/getKieToken";
 import { getAzureToken } from "@/lib/getAzureKey";
+import { customModelName, customProviderHeaders, customProviderUrl, isCustomModelId } from "@/lib/customProvider";
 
 interface Message {
   role: "user" | "assistant" | "system";
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     azureEndpoint?: string;
     azureDeployment?: string;
     azureModelName?: string;
+    customProvider?: { baseUrl?: string; apiKey?: string };
   };
 
   const model = body.model ?? "claude-sonnet-4-6";
@@ -46,6 +48,36 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ error: "messages or prompt is required" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── Custom OpenAI-compatible provider ─────────────────────────────────────
+  if (isCustomModelId(model)) {
+    let url: string;
+    try {
+      url = customProviderUrl(body.customProvider?.baseUrl ?? "", "/chat/completions");
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid custom provider URL." }), {
+        status: 400, headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const upstream = await fetch(url, {
+      method: "POST",
+      cache: "no-store",
+      headers: customProviderHeaders(body.customProvider?.apiKey),
+      body: JSON.stringify({ model: customModelName(model), messages, stream: true }),
+    });
+    if (!upstream.ok) {
+      return new Response(JSON.stringify({ error: await upstream.text() }), {
+        status: upstream.status, headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(upstream.body, {
+      headers: {
+        "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive", "X-Accel-Buffering": "no",
+      },
     });
   }
 

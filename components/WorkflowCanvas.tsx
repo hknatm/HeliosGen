@@ -26,6 +26,7 @@ import { edgeStyle } from "@/lib/edgeStyles";
 import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
+import { loadCustomProviderConfig } from "@/lib/customProvider";
 
 import { motion } from "motion/react";
 import TypewriterHeading from "@/components/ui/TypewriterHeading";
@@ -1174,7 +1175,10 @@ export default function WorkflowCanvas() {
         const imageUrls = upstream.imageUrls;
         const aspectRatio = node.data.aspectRatio ?? "1:1";
         const quality = node.data.quality ?? "1k";
-        const payload = { prompt, imageUrls, model: node.data.model, aspectRatio, quality };
+        const customProvider = typeof node.data.model === "string" && node.data.model.startsWith("custom:")
+          ? loadCustomProviderConfig()
+          : undefined;
+        const payload = { prompt, imageUrls, model: node.data.model, aspectRatio, quality, ...(customProvider ? { customProvider } : {}) };
 
         if (!prompt?.trim()) {
           const promptNodeId = edges.find(
@@ -1262,13 +1266,16 @@ export default function WorkflowCanvas() {
         updateNodeData(nodeId, { status: "running", outputText: "", errorMsg: undefined });
 
         try {
+          const model = (node.data.model as string | undefined) ?? "claude-sonnet-4-6";
+          const customProvider = model.startsWith("custom:") ? loadCustomProviderConfig() : undefined;
           const res = await fetch("/api/assistant", {
             method: "POST",
             headers: authHeaders(token),
             body: JSON.stringify({
               prompt,
-              model: node.data.model ?? "claude-sonnet-4-6",
+              model,
               systemPrompt: "You are an expert prompt engineer. Rewrite the user's prompt to be clearer, more specific, and more effective for an AI model. Output only the improved prompt — no explanation, no preamble, no quotes, no commentary of any kind.",
+              ...(customProvider ? { customProvider } : {}),
             }),
           });
           if (!res.ok) {

@@ -8,6 +8,7 @@ import CornerResizer from "./CornerResizer";
 import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import { useReadOnly } from "@/lib/readOnlyContext";
+import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 
 type AssistantNodeType = Node<NodeData, "assistantNode">;
 
@@ -49,6 +50,17 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const outputText = (data.outputText as string) ?? "";
   const localPrompt = (data.localPrompt as string) ?? "";
   const model = (data.model as string) ?? "claude-sonnet-4-6";
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((item) => item.chat));
+  const modelOptions = [
+    ...MODELS,
+    ...customModels.map((item) => ({ id: customModelId(item.id), label: item.name })),
+  ];
+
+  useEffect(() => {
+    const refresh = () => setCustomModels(loadCustomProviderModels().filter((item) => item.chat));
+    window.addEventListener("aiui-custom-provider-models-changed", refresh);
+    return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+  }, []);
 
   const [viewMode, setViewMode] = useState<"input" | "output">("input");
   const [loading, setLoading] = useState(false);
@@ -150,6 +162,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           model,
           systemPrompt:
             "You are a senior prompt engineer specializing in optimizing prompts for clarity, precision, and effectiveness. Your task is to take an existing user prompt and rewrite it to improve its structure, specificity, and performance for an AI model. Preserve the original intent while enhancing wording, removing ambiguity, and adding useful detail where appropriate. Do not change the task itself. Output only the improved prompt. Do not include any explanations, comments, formatting markers, or quotation marks.",
+          ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
         signal: controller.signal,
       });
@@ -199,7 +212,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       setLoading(false);
       abortRef.current = null;
     }
-  }, [busy, hasPrompt, localPrompt, id, updateNodeData]);
+  }, [busy, hasPrompt, localPrompt, id, updateNodeData, model]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -373,14 +386,14 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 className="flex items-center gap-1"
               >
                 <span className="text-[11px] text-[#A0A0A0] hover:text-white transition-colors">
-                  {MODELS.find((m) => m.id === model)?.label ?? model}
+                  {modelOptions.find((m) => m.id === model)?.label ?? model}
                 </span>
                 <ChevronIcon open={modelOpen} />
               </button>
 
               {modelPopup.visible && (
                 <div className={`absolute bottom-full left-0 mb-2 w-44 bg-[#111622] border border-[#1E2840] rounded-md overflow-hidden z-[1002] shadow-2xl ${modelPopup.className}`}>
-                  {MODELS.map((m) => (
+                  {modelOptions.map((m) => (
                     <button
                       key={m.id}
                       onMouseDown={(e) => e.stopPropagation()}

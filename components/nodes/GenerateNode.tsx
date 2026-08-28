@@ -20,6 +20,7 @@ import { IMAGE_MODELS, AZURE_POPULAR_SIZES, validateAzureCustomSize } from "@/li
 import { PROVIDERS, ProviderId, getModelProvider, setModelProvider, modelHasProviderChoice } from "@/lib/providers";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import MissingInputWarning from "./MissingInputWarning";
+import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 
 // Derived from config — no hardcoding needed
 const MODELS = IMAGE_MODELS.map((m) => ({ id: m.id, name: m.name, meta: m.provider }));
@@ -36,6 +37,16 @@ const MODEL_CAPS = Object.fromEntries(
   }])
 );
 const DEFAULT_CAPS = MODEL_CAPS["nano-banana-2"];
+const CUSTOM_IMAGE_CAPS = {
+  supportsImages: false,
+  supportsQuality: false,
+  ratios: ["auto"],
+  maxImages: 0,
+  qualityOptions: undefined,
+  qualityKey: undefined,
+  azureQualityOptions: undefined,
+  azureResolutionOptions: undefined,
+};
 
 // ── Aspect ratios ─────────────────────────────────────────────────────────────
 
@@ -374,10 +385,24 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
     });
   }, [id, updateNodeData]);
 
+  const [customModels, setCustomModels] = useState(() => loadCustomProviderModels().filter((item) => item.image));
+  const customModelOptions = customModels.map((item) => ({
+    id: customModelId(item.id),
+    name: item.name,
+    meta: loadCustomProviderConfig().name.trim() || "Custom Provider",
+  }));
+  const modelOptions = [...MODELS, ...customModelOptions];
   const model = (data.model as string) ?? "nano-banana-2";
-  const caps = MODEL_CAPS[model] ?? DEFAULT_CAPS;
-  const modelInfo = MODELS.find((m) => m.id === model) ?? MODELS[0];
+  const isCustomProviderModel = model.startsWith("custom:");
+  const caps = isCustomProviderModel ? CUSTOM_IMAGE_CAPS : (MODEL_CAPS[model] ?? DEFAULT_CAPS);
+  const modelInfo = modelOptions.find((item) => item.id === model) ?? MODELS[0];
   const quality = (data.quality as string) ?? "1k";
+
+  useEffect(() => {
+    const refresh = () => setCustomModels(loadCustomProviderModels().filter((item) => item.image));
+    window.addEventListener("aiui-custom-provider-models-changed", refresh);
+    return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+  }, []);
   const status = data.status ?? "idle";
 
   const [currentProvider, setCurrentProvider] = useState<ProviderId>("kie");
@@ -670,6 +695,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
         } : {}),
       } : {}),
       ...(isCodex ? { codexProvider: true } : {}),
+      ...(isCustomProviderModel ? { customProvider: loadCustomProviderConfig() } : {}),
     };
 
     if (!resolvedPrompt.trim()) {
@@ -731,7 +757,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
         setLoading(false);
       }
     }, 3000);
-  }, [id, nodes, edges, model, aspectRatio, quality, data.azureQuality, data.azureCustomWidth, data.azureCustomHeight, debugMode, connectedPromptNodeId, updateNodeData, flashEdgeError, kieKeySet, addToast]);
+  }, [id, nodes, edges, model, aspectRatio, quality, data.azureQuality, data.azureCustomWidth, data.azureCustomHeight, debugMode, connectedPromptNodeId, updateNodeData, flashEdgeError, kieKeySet, addToast, isCustomProviderModel]);
 
   const handleGenerateBatch = useCallback(() => {
     generate();
@@ -1101,16 +1127,16 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
             </button>
             {modelPopup.visible && (
               <div className={`absolute bottom-full left-0 mb-2 w-48 bg-[#111622] border border-[#1E2840] rounded-md overflow-hidden z-[1002] shadow-2xl ${modelPopup.className}`}>
-                {[...new Set(MODELS.map(m => m.meta))].map((provider, pi) => (
+                {[...new Set(modelOptions.map(m => m.meta))].map((provider, pi) => (
                   <Fragment key={provider}>
                     {pi > 0 && <div className="border-t border-white/[0.06] mx-2 my-0.5" />}
-                    {MODELS.filter(m => m.meta === provider).map(m => (
+                    {modelOptions.filter(m => m.meta === provider).map(m => (
                       <button
                         key={m.id}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={() => {
-                          const newCaps = MODEL_CAPS[m.id] ?? DEFAULT_CAPS;
-                          const validRatio = newCaps.ratios.includes(aspectRatio) ? aspectRatio : "1:1";
+                          const newCaps = m.id.startsWith("custom:") ? CUSTOM_IMAGE_CAPS : (MODEL_CAPS[m.id] ?? DEFAULT_CAPS);
+                          const validRatio = newCaps.ratios.includes(aspectRatio) ? aspectRatio : (newCaps.ratios[0] ?? "1:1");
                           const validQuality = newCaps.qualityOptions && !newCaps.qualityOptions.includes(quality as "1k" | "2k" | "4k")
                             ? newCaps.qualityOptions[0]
                             : quality;

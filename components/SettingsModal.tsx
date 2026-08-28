@@ -5,6 +5,17 @@ import { MODEL_GROUPS } from "@/lib/models";
 import { createClient } from "@/lib/supabase/client";
 import { useWorkflowStore } from "@/lib/store";
 import { PROVIDERS, ProviderId, loadModelProviders, saveModelProviders, getModelProvider } from "@/lib/providers";
+import {
+  CustomProviderConfig,
+  CustomProviderModel,
+  CustomProviderModelClassification,
+  loadCustomProviderConfig,
+  saveCustomProviderConfig,
+  loadCustomProviderModels,
+  saveCustomProviderModels,
+  setCustomProviderModelClassification,
+  syncCustomProviderModels,
+} from "@/lib/customProvider";
 
 /* ─── Provider options (re-exported for backwards compat) ───────────────────── */
 
@@ -96,7 +107,7 @@ export function saveAzureTextModelName(name: string) {
 
 const IS_DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
-type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "debug";
+type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "debug";
 
 const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
   {
@@ -138,6 +149,17 @@ const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: "custom-provider",
+    label: "Custom Provider",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a10 10 0 1 0 10 10" />
+        <path d="M12 6a6 6 0 1 0 6 6" />
+        <path d="M12 10a2 2 0 1 0 2 2" />
       </svg>
     ),
   },
@@ -1264,6 +1286,269 @@ function TextModelsPanel({
   );
 }
 
+/* ─── Custom Provider panel ─────────────────────────────────────────────────── */
+
+function CustomProviderPanel() {
+  const [config, setConfig] = useState<CustomProviderConfig>(() => loadCustomProviderConfig());
+  const [models, setModels] = useState<CustomProviderModel[]>(() => loadCustomProviderModels());
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+
+  const updateConfig = (patch: Partial<CustomProviderConfig>) => {
+    const next = { ...config, ...patch };
+    setConfig(next);
+    saveCustomProviderConfig(next);
+  };
+
+  const handleSync = async () => {
+    if (!config.baseUrl.trim()) {
+      setError("Enter a base URL before syncing models.");
+      return;
+    }
+    setSyncing(true);
+    setError(null);
+    try {
+      const synced = await syncCustomProviderModels(config);
+      // Preserve existing classifications for models that are still present.
+      const existing = loadCustomProviderModels();
+      const merged = synced.map((m) => {
+        const prev = existing.find((e) => e.id === m.id);
+        return prev ? { ...m, chat: prev.chat, image: prev.image } : m;
+      });
+      saveCustomProviderModels(merged);
+      setModels(merged);
+      setSyncedAt(new Date().toLocaleTimeString());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to sync models");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleClassification = (id: string, key: "chat" | "image", value: boolean) => {
+    setCustomProviderModelClassification(id, { [key]: value } as CustomProviderModelClassification);
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, [key]: value } : m)));
+  };
+
+  const hasModels = models.length > 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+      {/* Header */}
+      <div>
+        <h2 style={{ fontSize: "17px", fontWeight: 600, color: "rgba(255,255,255,0.9)", margin: 0, lineHeight: 1.2 }}>
+          Custom Provider
+        </h2>
+        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.28)", marginTop: "6px", lineHeight: 1.5 }}>
+          Connect a custom OpenAI-compatible proxy endpoint. Configuration is stored locally in your browser.
+        </p>
+      </div>
+
+      {/* Endpoint config card */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          padding: "16px",
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "12px",
+        }}
+      >
+        {/* Endpoint name */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <label
+            htmlFor="custom-provider-name"
+            style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.5)", letterSpacing: "0.05em", textTransform: "uppercase" }}
+          >
+            Endpoint Name
+          </label>
+          <input
+            id="custom-provider-name"
+            type="text"
+            placeholder="e.g. My Local Proxy"
+            value={config.name}
+            onChange={(e) => updateConfig({ name: e.target.value })}
+            style={INPUT_STYLE}
+            onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.2)"; }}
+            onBlur={(e)  => { (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.08)"; }}
+          />
+          <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", margin: 0, lineHeight: 1.5 }}>
+            A human-readable label for this endpoint.
+          </p>
+        </div>
+
+        {/* Base URL */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <label
+            htmlFor="custom-provider-base-url"
+            style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.5)", letterSpacing: "0.05em", textTransform: "uppercase" }}
+          >
+            Base URL
+          </label>
+          <input
+            id="custom-provider-base-url"
+            type="url"
+            placeholder="https://your-proxy.example.com/v1"
+            value={config.baseUrl}
+            onChange={(e) => updateConfig({ baseUrl: e.target.value })}
+            style={INPUT_STYLE}
+            onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.2)"; }}
+            onBlur={(e)  => { (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.08)"; }}
+          />
+        </div>
+
+        {/* API key (optional) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <label
+            htmlFor="custom-provider-api-key"
+            style={{ fontSize: "11px", fontWeight: 600, color: "rgba(255,255,255,0.5)", letterSpacing: "0.05em", textTransform: "uppercase" }}
+          >
+            API Key <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span>
+          </label>
+          <input
+            id="custom-provider-api-key"
+            type="password"
+            placeholder="sk-…"
+            value={config.apiKey}
+            onChange={(e) => updateConfig({ apiKey: e.target.value })}
+            style={INPUT_STYLE}
+            onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.2)"; }}
+            onBlur={(e)  => { (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.08)"; }}
+          />
+          <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", margin: 0, lineHeight: 1.5 }}>
+            Leave empty for endpoints that don&apos;t require a key.
+          </p>
+        </div>
+
+        {/* Sync button */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "2px" }}>
+          <button
+            id="custom-provider-sync"
+            onClick={handleSync}
+            disabled={syncing}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: syncing ? "default" : "pointer",
+              background: syncing ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.1)",
+              color: syncing ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.85)",
+              fontSize: "12px",
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              transition: "background 140ms ease, color 140ms ease",
+            }}
+          >
+            {syncing ? "Syncing…" : "Sync Models"}
+          </button>
+          {syncedAt && !error && (
+            <span style={{ fontSize: "10px", color: "rgba(74,222,128,0.7)", whiteSpace: "nowrap" }}>
+              Synced {syncedAt}
+            </span>
+          )}
+        </div>
+
+        {error && (
+          <p style={{ fontSize: "11px", color: "rgba(239,68,68,0.7)", margin: 0 }}>{error}</p>
+        )}
+      </div>
+
+      {/* Synced models */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#a78bfa", flexShrink: 0 }} />
+          <span style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.08em", color: "rgba(255,255,255,0.35)", textTransform: "uppercase" }}>
+            Synced Models
+          </span>
+          {hasModels && (
+            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", marginLeft: "auto" }}>
+              {models.length} model{models.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+
+        {!hasModels ? (
+          <div
+            style={{
+              padding: "18px 16px",
+              borderRadius: "10px",
+              background: "rgba(255,255,255,0.02)",
+              border: "1px dashed rgba(255,255,255,0.1)",
+              fontSize: "12px",
+              color: "rgba(255,255,255,0.3)",
+              textAlign: "center",
+              lineHeight: 1.5,
+            }}
+          >
+            No models synced yet. Enter a base URL and click Sync Models.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {models.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                  padding: "11px 16px",
+                  borderRadius: "10px",
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.85)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.name}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.28)", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.id}
+                  </div>
+                </div>
+
+                {/* Classification toggles */}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                  {(["chat", "image"] as const).map((kind) => {
+                    const active = m[kind];
+                    return (
+                      <button
+                        key={kind}
+                        id={`custom-provider-${m.id}-${kind}`}
+                        onClick={() => handleClassification(m.id, kind, !active)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          cursor: "pointer",
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          whiteSpace: "nowrap",
+                          transition: "background 140ms ease, color 140ms ease, border-color 140ms ease",
+                          background: active ? "rgba(167,139,250,0.12)" : "transparent",
+                          borderColor: active ? "rgba(167,139,250,0.35)" : "rgba(255,255,255,0.1)",
+                          color: active ? "rgba(196,181,253,0.9)" : "rgba(255,255,255,0.35)",
+                        }}
+                      >
+                        {kind === "chat" ? "Chat" : "Image"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Debug panel ───────────────────────────────────────────────────────────── */
 
 function DebugPanel() {
@@ -1677,6 +1962,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                 onModelNameChange={handleAzureTextModelNameChange}
               />
             )}
+            {activeNav === "custom-provider" && <CustomProviderPanel />}
             {activeNav === "debug" && IS_DEBUG && <DebugPanel />}
           </div>
         </div>
