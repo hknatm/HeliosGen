@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkflowStore, Space } from "./store";
 import { createClient } from "./supabase/client";
+import { IS_LOCAL_CLIENT } from "./settingsSync";
 
 const DEBOUNCE_MS = 1_500; // wait 1.5s of inactivity before syncing
 
@@ -22,6 +23,9 @@ export function useSpaceSync() {
 
   const timerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedRef  = useRef<number>(0); // epoch ms of last successful save
+  // Do not save a newly opened origin until its initial server read finishes.
+  // Otherwise its persisted default placeholder can overwrite shared spaces.
+  const initialLoadCompleteRef = useRef(false);
   const spacesRef      = useRef(spaces);
   spacesRef.current    = spaces;
 
@@ -41,6 +45,44 @@ export function useSpaceSync() {
   useEffect(() => {
     if (!hydrated) return;
     (async () => {
+      // ── Local mode: shared SQLite via /api/spaces ────────────────────────────
+      if (IS_LOCAL_CLIENT) {
+        try {
+          const res = await fetch("/api/spaces");
+          if (!res.ok) return;
+          const data = (await res.json()) as { spaces?: unknown[] };
+          if (!Array.isArray(data?.spaces)) return;
+
+          const dbSpaces: Space[] = data.spaces.map((row) => {
+            const r = row as {
+              id: string; name: string; data?: Record<string, unknown>;
+              is_public?: boolean; created_at: string; updated_at: string;
+            };
+            return {
+              id:           r.id,
+              name:         r.name,
+              nodes:        (r.data?.nodes as Space["nodes"])        ?? [],
+              edges:        (r.data?.edges as Space["edges"])        ?? [],
+              nodeCounters: (r.data?.nodeCounters as Space["nodeCounters"]) ?? {},
+              viewport:     r.data?.viewport as Space["viewport"],
+              createdAt:    Date.parse(r.created_at),
+              updatedAt:    Date.parse(r.updated_at),
+              isPublic:     r.is_public ?? false,
+            };
+          });
+
+          if (dbSpaces.length > 0) loadSpacesFromDB(dbSpaces);
+          initialLoadCompleteRef.current = true;
+          const now = new Date();
+          lastSyncedRef.current = now.getTime();
+          setLastSyncedAt(now);
+          setStatus("synced");
+        } catch {
+          setStatus("error");
+        }
+        return;
+      }
+
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
@@ -77,6 +119,50 @@ export function useSpaceSync() {
 
   // ── Core save (no rate-limit checks) ────────────────────────────────────────
   const save = useCallback(async () => {
+    // ── Local mode: shared SQLite via /api/spaces ──────────────────────────────
+    if (IS_LOCAL_CLIENT) {
+      if (!initialLoadCompleteRef.current) return;
+      setStatus("syncing");
+      try {
+        // Persist all spaces locally, including empty named canvases. They are
+        // meaningful user state and should be shared between localhost/ngrok.
+        const spacesToSave = spacesRef.current;
+        const rows = spacesToSave.map((sp) => ({
+          id:        sp.id,
+          name:      sp.name,
+          is_public: sp.isPublic ?? false,
+          data:    {
+            nodes: sp.nodes.map((n) => ({
+              ...n,
+              data: { ...n.data, inputImage: undefined },
+            })),
+            edges:        sp.edges,
+            nodeCounters: sp.nodeCounters,
+            viewport:     sp.viewport,
+            createdAt:    sp.createdAt,
+            updatedAt:    sp.updatedAt ?? sp.createdAt,
+          },
+          created_at: new Date(sp.createdAt).toISOString(),
+          updated_at: new Date(sp.updatedAt ?? sp.createdAt).toISOString(),
+        }));
+
+        const res = await fetch("/api/spaces", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ spaces: rows }),
+        });
+        if (!res.ok) throw new Error("spaces save failed");
+
+        const now = new Date();
+        lastSyncedRef.current = now.getTime();
+        setLastSyncedAt(now);
+        setStatus("synced");
+      } catch {
+        setStatus("error");
+      }
+      return;
+    }
+
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;

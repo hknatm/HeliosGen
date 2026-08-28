@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useWorkflowStore } from "@/lib/store";
 import { useChatSessionStore } from "@/lib/chatSessionStore";
 import { useFolderStore } from "@/lib/folderStore";
+import { useSettingsSync } from "@/lib/settingsSync";
 import type { User } from "@supabase/supabase-js";
 import {
   Workflow,
@@ -684,12 +685,15 @@ export function AppSidebar() {
   const clearSessions     = useChatSessionStore((s) => s.clearSessions);
   const supabase = createClient();
 
+  useSettingsSync();
+
   React.useEffect(() => {
     if (process.env.NEXT_PUBLIC_GUEST_MODE === "true") {
       fetch("/api/settings/kie-key")
         .then((r) => r.json())
         .then((d) => setKieKeySet(!!d.hasToken))
         .catch(() => setKieKeySet(null));
+      useChatSessionStore.getState().loadFromSupabase();
       return;
     }
     supabase.auth.getUser().then(({ data }) => {

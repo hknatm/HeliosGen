@@ -52,8 +52,9 @@ function ModelPicker({
     return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
   }, []);
 
-  const modelGroups = customModels.length > 0
-    ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: customModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
+  const enabledCustomModels = customModels.filter((m) => m.enabled !== false);
+  const modelGroups = enabledCustomModels.length > 0
+    ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: enabledCustomModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
     : MODEL_GROUPS;
   const current = modelGroups.flatMap((group) => group.models).find(m => m.id === model) ?? MODELS.find(m => m.id === model);
   const dropPos = direction === "up"
@@ -635,6 +636,13 @@ function ChatInner() {
     if (useChatSessionStore.persist?.hasHydrated()) setHydrated(true);
     return unsub;
   }, []);
+
+  // Local mode: load authoritative server sessions after hydration.
+  useEffect(() => {
+    if (hydrated && process.env.NEXT_PUBLIC_GUEST_MODE === "true") {
+      useChatSessionStore.getState().loadFromSupabase();
+    }
+  }, [hydrated]);
 
   const activeSession = idParam ? (sessions.find(s => s.id === idParam) ?? null) : null;
 

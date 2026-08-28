@@ -67,13 +67,9 @@ export interface CustomProviderModel {
   id: string;
   /** Display name (falls back to id when the proxy omits it). */
   name: string;
-  /** Classified as a chat model. */
-  chat: boolean;
-  /** Classified as an image model. */
-  image: boolean;
+  /** Whether the model is enabled for use in chat/assistant surfaces. */
+  enabled: boolean;
 }
-
-export type CustomProviderModelClassification = Pick<CustomProviderModel, "chat" | "image">;
 
 const CONFIG_KEY = "aiui-custom-provider-config";
 const MODELS_KEY = "aiui-custom-provider-models";
@@ -117,10 +113,9 @@ export function loadCustomProviderModels(): CustomProviderModel[] {
       .map((m) => ({
         id: m.id as string,
         name: typeof m.name === "string" ? m.name : (m.id as string),
-        // Custom endpoints are currently text/chat-only. Normalize legacy
-        // classification data so existing browser storage follows that rule.
-        chat: true,
-        image: false,
+        // Existing models default to enabled. Legacy chat/image fields are
+        // dropped — they were dead classification data.
+        enabled: m.enabled === undefined ? true : m.enabled === true,
       }));
   } catch {
     return [];
@@ -138,15 +133,12 @@ export function getCustomProviderModel(id: string): CustomProviderModel | undefi
   return loadCustomProviderModels().find((m) => m.id === id);
 }
 
-/** Persists the Chat/Image classification for a single model, leaving the rest untouched. */
-export function setCustomProviderModelClassification(
-  id: string,
-  classification: CustomProviderModelClassification,
-) {
+/** Persists the enabled state for a single model, leaving the rest untouched. */
+export function setCustomProviderModelEnabled(id: string, enabled: boolean) {
   const models = loadCustomProviderModels();
   const idx = models.findIndex((m) => m.id === id);
   if (idx === -1) return;
-  models[idx] = { ...models[idx], ...classification };
+  models[idx] = { ...models[idx], enabled };
   saveCustomProviderModels(models);
 }
 
@@ -186,5 +178,11 @@ export async function syncCustomProviderModels(
 
   const data = (await res.json()) as CustomProviderModelsResponse;
   const models = Array.isArray(data?.models) ? data.models : [];
-  return models.map((id) => ({ id, name: id, chat: false, image: false }));
+  // Preserve the enabled state of unchanged ids across a re-sync.
+  const existing = new Map(loadCustomProviderModels().map((m) => [m.id, m.enabled]));
+  return models.map((id) => ({
+    id,
+    name: id,
+    enabled: existing.get(id) ?? true,
+  }));
 }

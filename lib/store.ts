@@ -343,6 +343,9 @@ export const useWorkflowStore = create<WorkflowStore>()(
         deleteSpace: (id) =>
           set((s) => {
             if (s.spaces.length <= 1) return {}; // must have at least one
+            if (process.env.NEXT_PUBLIC_HELIOS_MODE === "local" || process.env.NEXT_PUBLIC_GUEST_MODE === "true") {
+              fetch(`/api/spaces?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+            }
             const remaining = s.spaces.filter((sp) => sp.id !== id);
             if (s.activeSpaceId !== id) return { spaces: remaining };
             const next = remaining[0];

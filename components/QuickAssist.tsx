@@ -34,8 +34,9 @@ export function QuickAssist() {
   const { createSession, upsertSession } = useChatSessionStore();
   const disabledIds: string[] = [];
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
-  const modelGroups = customModels.length > 0
-    ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: customModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
+  const enabledCustomModels = customModels.filter((m) => m.enabled !== false);
+  const modelGroups = enabledCustomModels.length > 0
+    ? [...MODEL_GROUPS, { label: loadCustomProviderConfig().name.trim() || "Custom Provider", models: enabledCustomModels.map((m) => ({ id: customModelId(m.id), label: m.name, desc: "Custom" })) }]
     : MODEL_GROUPS;
 
   useEffect(() => {

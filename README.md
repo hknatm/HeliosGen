@@ -168,8 +168,10 @@ CALLBACK_BASE_URL=https://xxxx.ngrok-free.app
 
 Supabase and R2 environment variables are not required in this mode. Metadata is
 stored in `data/heliosgen.db`, and generated media remains under
-`public/generated/`. Existing installations using `GUEST_MODE=true` remain
-supported as a compatibility alias. On first database access, an existing
+`public/generated/`. Chats, workflow canvases, and ordinary non-secret app
+settings are also stored in this SQLite database, so they are shared by
+`localhost`, ngrok, and other URLs that reach the same server. Existing
+installations using `GUEST_MODE=true` remain supported as a compatibility alias. On first database access, an existing
 `data/guest-db.json` is imported into SQLite once and left unchanged as a backup.
 
 Start ngrok:

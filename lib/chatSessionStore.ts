@@ -2,6 +2,10 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { createClient } from "@/lib/supabase/client";
 
+export const IS_LOCAL_CLIENT =
+  process.env.NEXT_PUBLIC_HELIOS_MODE === "local" ||
+  process.env.NEXT_PUBLIC_GUEST_MODE === "true";
+
 export interface StoredMessage {
   role: "user" | "assistant";
   content: string;
@@ -33,6 +37,26 @@ async function getAuthenticatedUser() {
   return { supabase, user: data.user };
 }
 
+/** Persists a chat session to the shared SQLite DB (local mode only). */
+async function persistChatSession(session: ChatSession) {
+  try {
+    await fetch("/api/chat-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session: {
+          id: session.id,
+          title: session.title,
+          messages: session.messages,
+          model: session.model,
+          created_at: new Date(session.createdAt).toISOString(),
+          updated_at: new Date(session.updatedAt).toISOString(),
+        },
+      }),
+    });
+  } catch { /* offline / transient — ignore */ }
+}
+
 export const useChatSessionStore = create<ChatSessionState>()(
   persist(
     (set, get) => ({
@@ -50,6 +74,11 @@ export const useChatSessionStore = create<ChatSessionState>()(
             ...s.sessions,
           ],
         }));
+
+        if (IS_LOCAL_CLIENT) {
+          persistChatSession({ id, title, messages: [], model, createdAt: now, updatedAt: now });
+          return id;
+        }
 
         getAuthenticatedUser().then(({ supabase, user }) => {
           if (!user) return;
@@ -75,6 +104,12 @@ export const useChatSessionStore = create<ChatSessionState>()(
           ),
         }));
 
+        if (IS_LOCAL_CLIENT) {
+          const sess = get().sessions.find(s => s.id === id);
+          if (sess) persistChatSession({ ...sess, messages, model, updatedAt });
+          return;
+        }
+
         getAuthenticatedUser().then(({ supabase, user }) => {
           if (!user) return;
           supabase.from("chat_sessions").upsert({
@@ -91,6 +126,12 @@ export const useChatSessionStore = create<ChatSessionState>()(
       deleteSession: (id) => {
         set(s => ({ sessions: s.sessions.filter(sess => sess.id !== id) }));
 
+        if (IS_LOCAL_CLIENT) {
+          fetch(`/api/chat-sessions?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+            .catch(() => {});
+          return;
+        }
+
         getAuthenticatedUser().then(({ supabase, user }) => {
           if (!user) return;
           supabase.from("chat_sessions").delete().eq("id", id)
@@ -101,6 +142,46 @@ export const useChatSessionStore = create<ChatSessionState>()(
       clearSessions: () => set({ sessions: [] }),
 
       loadFromSupabase: async () => {
+        // ── Local mode: shared SQLite via /api/chat-sessions ───────────────────
+        if (IS_LOCAL_CLIENT) {
+          let res: Response;
+          try {
+            res = await fetch("/api/chat-sessions");
+          } catch {
+            return;
+          }
+          if (!res.ok) return;
+          const data = (await res.json().catch(() => null)) as { sessions?: unknown[] } | null;
+          const serverSessions: ChatSession[] = (data?.sessions ?? []).map((row) => {
+            const r = row as {
+              id: string; title: string; messages: StoredMessage[];
+              model: string; created_at: string; updated_at: string;
+            };
+            return {
+              id: r.id,
+              title: r.title,
+              messages: Array.isArray(r.messages) ? r.messages : [],
+              model: r.model,
+              createdAt: new Date(r.created_at).getTime(),
+              updatedAt: new Date(r.updated_at).getTime(),
+            };
+          });
+
+          // Merge by timestamp. This imports old browser-only sessions and
+          // retains an unsent local edit if the previous POST was interrupted.
+          const byId = new Map(serverSessions.map((session) => [session.id, session]));
+          for (const local of get().sessions) {
+            const remote = byId.get(local.id);
+            if (!remote || local.updatedAt > remote.updatedAt) {
+              byId.set(local.id, local);
+              persistChatSession(local);
+            }
+          }
+
+          set({ sessions: [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt) });
+          return;
+        }
+
         const { supabase, user } = await getAuthenticatedUser();
         if (!user) return;
 

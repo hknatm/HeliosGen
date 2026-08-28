@@ -54,7 +54,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
   const modelOptions = [
     ...MODELS,
-    ...customModels.map((item) => ({ id: customModelId(item.id), label: item.name })),
+    ...customModels.filter((m) => m.enabled !== false).map((item) => ({ id: customModelId(item.id), label: item.name })),
   ];
 
   useEffect(() => {
