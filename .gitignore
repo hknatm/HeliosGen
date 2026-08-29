@@ -30,9 +30,30 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Private agent instructions and local agent state
+AGENTS.md
+AGENT.md
+agents.md
+
 # env files (can opt-in for committing if needed)
-.env*
+.env
+.env.*
 !.env.example
+
+# Credentials and private keys
+.codex/
+**/.codex/
+auth.json
+**/auth.json
+credentials.json
+**/credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+*.secret
+*.private
 !.env.guest
 
 # vercel
@@ -48,5 +69,11 @@ next-env.d.ts
 /data/*.json
 /data/*.db
 /data/*.db-*
+data/guest-db.json
 /public/generated/**
+public/generated/
+/generated/
+/outputs/
+/tmp/
+*.log
 !/public/generated/.gitkeep

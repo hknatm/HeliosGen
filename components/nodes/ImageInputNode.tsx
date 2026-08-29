@@ -1,7 +1,6 @@
 "use client";
 import { useRef, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import NextImage from "next/image";
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import { useWorkflowStore, NodeData } from "@/lib/store";
@@ -255,37 +254,19 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
           style={{ borderRadius: 7, overflow: "hidden" }}
           onDoubleClick={openLightbox}
         >
-          {/* Layer 1 — base image */}
+          {/* Dynamic workflow assets can come from local storage, tunnels, custom domains, or signed providers. */}
           {baseSrc && (
-            // Use <NextImage> only for confirmed R2 CDN URLs — third-party URLs skip
-            // next/image optimization because /_next/image fetches server-side and fails
-            // for URLs that have auth, IP allowlists, or expiry (e.g. Replicate links).
-            baseSrc === (data.r2Url as string | undefined) ? (
-              <NextImage
-                ref={nodeImgRef}
-                src={baseSrc}
-                alt="Input"
-                fill
-                quality={30}
-                sizes="600px"
-                style={{
-                  objectFit: "fill", zIndex: 1,
-                  animation: isUploading ? "upload-pulse 1.6s ease-in-out infinite" : undefined,
-                }}
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                ref={nodeImgRef}
-                src={baseSrc}
-                alt="Input"
-                style={{
-                  position: "absolute", inset: 0, width: "100%", height: "100%",
-                  display: "block", objectFit: "fill", zIndex: 1,
-                  animation: isUploading ? "upload-pulse 1.6s ease-in-out infinite" : undefined,
-                }}
-              />
-            )
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              ref={nodeImgRef}
+              src={baseSrc}
+              alt="Input"
+              style={{
+                position: "absolute", inset: 0, width: "100%", height: "100%",
+                display: "block", objectFit: "fill", zIndex: 1,
+                animation: isUploading ? "upload-pulse 1.6s ease-in-out infinite" : undefined,
+              }}
+            />
           )}
 
           {/* Layer 2 — incoming URL fades in on top, then gets promoted to base */}
@@ -307,25 +288,13 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
                 pointerEvents: "none",
               }}
             >
-              {topSrc === (data.r2Url as string | undefined) ? (
-                <NextImage
-                  src={topSrc}
-                  alt=""
-                  fill
-                  quality={30}
-                  sizes="600px"
-                  style={{ objectFit: "fill" }}
-                  onLoad={() => requestAnimationFrame(() => requestAnimationFrame(() => setTopReady(true)))}
-                />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={topSrc}
-                  alt=""
-                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", objectFit: "fill" }}
-                  onLoad={() => requestAnimationFrame(() => requestAnimationFrame(() => setTopReady(true)))}
-                />
-              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={topSrc}
+                alt=""
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", objectFit: "fill" }}
+                onLoad={() => requestAnimationFrame(() => requestAnimationFrame(() => setTopReady(true)))}
+              />
             </div>
           )}
 

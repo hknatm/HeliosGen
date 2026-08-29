@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import NextImage from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useWorkflowStore, Space } from "@/lib/store";
@@ -197,7 +196,9 @@ function TemplateCard({ onLoad, onReset }: { onLoad: () => void; onReset: (e: Re
       <div className="wsd-thumbs">
         {TEMPLATE_PREVIEWS.map((url, i) => (
           <div key={i} className="wsd-thumb-cell">
-            <NextImage src={url} alt="" fill sizes="160px" style={{ objectFit: "cover" }} />
+            {/* Template assets are public; load directly so self-hosted/custom CDN domains work without Next image allow-list changes. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           </div>
         ))}
         <div className="wsd-thumb-overlay" />
@@ -277,7 +278,7 @@ function ThumbnailMosaic({ space }: { space: Space }) {
                   style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                 />
               ) : (
-                <NextImage src={item.url} alt="" fill sizes="160px" style={{ objectFit: "cover" }} />
+                <img /* eslint-disable-line @next/next/no-img-element -- workflow data can use local, tunnel, custom-domain, or signed URLs */ src={item.url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               )
             ) : (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"

@@ -1,6 +1,5 @@
 "use client";
 import { useRef, useCallback, useState, useEffect } from "react";
-import NextImage from "next/image";
 import { Handle, Position, NodeProps, Node, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import { useWorkflowStore, NodeData } from "@/lib/store";
@@ -1161,21 +1160,15 @@ export default function VideoInputNode({ id, data, selected }: NodeProps<VideoIn
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Layer 1: optimized image (loads in background) */}
-              {capturedFrameUrl.startsWith("https://") ? (
-                <NextImage
-                  src={capturedFrameUrl}
-                  alt="Captured frame"
-                  fill
-                  quality={30}
-                  sizes="400px"
-                  onLoad={() => setFrameBlurVisible(false)}
-                  style={{ objectFit: "fill" }}
-                />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={capturedFrameUrl} alt="Captured frame" className="w-full h-full" style={{ objectFit: "fill" }} />
-              )}
+              {/* Captured frame URLs may use a local server, tunnel, custom domain, or signed provider URL. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={capturedFrameUrl}
+                alt="Captured frame"
+                className="w-full h-full"
+                onLoad={() => setFrameBlurVisible(false)}
+                style={{ objectFit: "fill" }}
+              />
 
               {/* Layer 2: blur overlay — fades out once optimized image loads */}
               {(data.capturedFrameBlurUrl as string | undefined) && (

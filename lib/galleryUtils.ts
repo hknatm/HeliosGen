@@ -15,16 +15,26 @@ export interface GalleryItem {
   referenceImageUrls?: string[];
 }
 
-// Matches Next.js's default image `deviceSizes`/`imageSizes` buckets, so the
-// generated /_next/image URL always lands on a size Next has already cached.
-const NEXT_IMG_WIDTHS = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1920, 3840];
+const THUMB_WIDTHS = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 1920, 2048, 3840];
 
-/** Downsized CDN thumbnail URL for displaying `url` at roughly `w` px (2x for retina). */
+/**
+ * Returns a browser-safe thumbnail URL.
+ *
+ * Only our R2 assets use the server-side thumbnail route. Every other image is
+ * loaded by the browser directly: that supports localhost, ngrok, custom
+ * domains, signed provider URLs, and future storage hosts without making the
+ * image optimizer an allow-list bottleneck.
+ */
 export function thumbSrc(url: string, w = 96): string {
   if (!url || url.startsWith("blob:") || url.startsWith("data:")) return url;
-  const target = w * 2;
-  const snapped = NEXT_IMG_WIDTHS.find(s => s >= target) ?? NEXT_IMG_WIDTHS[NEXT_IMG_WIDTHS.length - 1];
-  return `/_next/image?url=${encodeURIComponent(url)}&w=${snapped}&q=75`;
+
+  if (url.includes(".r2.dev/")) {
+    const target = w * 2;
+    const snapped = THUMB_WIDTHS.find((size) => size >= target) ?? THUMB_WIDTHS[THUMB_WIDTHS.length - 1];
+    return `/api/thumb?url=${encodeURIComponent(url)}&w=${snapped}`;
+  }
+
+  return url;
 }
 
 export async function getToken(): Promise<string | undefined> {

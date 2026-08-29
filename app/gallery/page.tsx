@@ -8,7 +8,7 @@ import { PROVIDERS, getModelProvider, setModelProvider, modelHasProviderChoice }
 import { useWorkflowStore } from "@/lib/store";
 import type { User } from "@supabase/supabase-js";
 import { Maximize2, Minimize2, ShieldAlert, X } from "lucide-react";
-import { GalleryItem, getToken, galleryCache } from "@/lib/galleryUtils";
+import { GalleryItem, getToken, galleryCache, thumbSrc } from "@/lib/galleryUtils";
 import { useFolderStore } from "@/lib/folderStore";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -397,20 +397,8 @@ function randomUUID(): string {
   });
 }
 
-const NEXT_IMG_WIDTHS = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 1920, 2048, 3840];
-
 function snapWidth(w: number): number {
-  const target = w * 2;
-  return NEXT_IMG_WIDTHS.find(s => s >= target) ?? NEXT_IMG_WIDTHS[NEXT_IMG_WIDTHS.length - 1];
-}
-
-function thumbSrc(url: string, snapped: number): string {
-  if (!url || url.startsWith("blob:") || url.startsWith("data:") || url.startsWith("/_next/")) return url;
-  // R2 URLs: use our own proxy to avoid Cloudflare ECONNRESET on Next.js's undici fetcher
-  if (url.includes(".r2.dev/")) {
-    return `/api/thumb?url=${encodeURIComponent(url)}&w=${snapped}`;
-  }
-  return `/_next/image?url=${encodeURIComponent(url)}&w=${snapped}&q=75`;
+  return w;
 }
 
 interface RefImage {
