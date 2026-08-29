@@ -999,7 +999,7 @@ export default function WorkflowCanvas() {
 
       // Image/resource handles do not accept text (prompt) nodes
       if (
-        source?.type === "promptNode" &&
+        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "promptComposerNode") &&
         (connection.targetHandle === "image" ||
           connection.targetHandle === "resource" ||
           connection.targetHandle === "startFrame" ||
@@ -1297,21 +1297,28 @@ export default function WorkflowCanvas() {
 
           const reader = res.body!.getReader();
           const decoder = new TextDecoder();
+          let buffer = "";
           let accumulated = "";
           outer: while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
               if (!line.startsWith("data: ")) continue;
               const payload = line.slice(6).trim();
               if (payload === "[DONE]") break outer;
               try {
                 const parsed = JSON.parse(payload);
-                if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-                  const delta = parsed.delta.text ?? "";
-                  if (delta) { accumulated += delta; updateNodeData(nodeId, { outputText: accumulated }); }
-                }
-              } catch { /* skip */ }
+                const delta =
+                  (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
+                    ? parsed.delta.text
+                    : null) ??
+                  parsed.choices?.[0]?.delta?.content ??
+                  "";
+                if (delta) { accumulated += delta; updateNodeData(nodeId, { outputText: accumulated }); }
+              } catch { /* skip malformed SSE lines */ }
             }
           }
           updateNodeData(nodeId, { status: "done", outputText: accumulated });

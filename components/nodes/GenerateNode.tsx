@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState, Fragment } from "react";
 import { useAnimatedPopup } from "@/lib/useAnimatedPopup";
 import { createPortal } from "react-dom";
 import GenerateButton from "@/components/nodes/GenerateButton";
-import Image from "next/image";
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import NodeActionBar from "./NodeActionBar";
@@ -12,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveInputs } from "@/lib/executor";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { browserNotify, requestNotificationPermission } from "@/lib/browserNotify";
+import { assetSrc } from "@/lib/galleryUtils";
 
 type GenerateNodeType = Node<NodeData, "generateNode">;
 
@@ -468,7 +468,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
     }
   }, [id, updateNodeData, generations]);
 
-  // Probe original URL for true pixel dimensions (Next.js Image serves a reduced copy)
+  // Probe the direct asset URL for true pixel dimensions.
   useEffect(() => {
     const url = data.imageUrl as string | undefined;
     if (!url) return;
@@ -477,7 +477,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
     img.onload = () => {
       if (!cancelled) updateNodeData(id, { imageNaturalRatio: `${img.naturalWidth} / ${img.naturalHeight}` });
     };
-    img.src = url;
+    img.src = assetSrc(url);
     return () => { cancelled = true; };
   }, [data.imageUrl, id, updateNodeData]);
 
@@ -1005,14 +1005,12 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
                       </button>
                     </div>
                   ) : (
-                    <Image
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
                       ref={i === currentGenIdx ? nodeImgRef : undefined}
-                      src={entry as string}
+                      src={assetSrc(entry as string)}
                       alt="Generated"
-                      fill
-                      quality={30}
-                      sizes="400px"
-                      style={{ objectFit: "fill" }}
+                      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill" }}
                       onLoad={i === currentGenIdx ? () => {
                         requestAnimationFrame(() => {
                           if (!cardRef.current) return;
@@ -1499,7 +1497,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
             {/* Full-res image */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={data.imageUrl as string}
+              src={assetSrc(data.imageUrl as string)}
               alt="Full quality"
               className="block max-w-[90vw] max-h-[90vh] object-contain"
               onLoad={() => setLightboxImgLoaded(true)}

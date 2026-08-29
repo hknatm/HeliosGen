@@ -176,27 +176,30 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
 
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
+      let buffer = "";
       let accumulated = "";
 
       outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6).trim();
           if (payload === "[DONE]") break outer;
           try {
             const parsed = JSON.parse(payload);
-            // Anthropic streaming: content_block_delta with text_delta type
-            if (
-              parsed.type === "content_block_delta" &&
-              parsed.delta?.type === "text_delta"
-            ) {
-              const delta = parsed.delta.text ?? "";
-              if (delta) {
-                accumulated += delta;
-                updateNodeData(id, { outputText: accumulated });
-              }
+            const delta =
+              (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
+                ? parsed.delta.text
+                : null) ??
+              parsed.choices?.[0]?.delta?.content ??
+              "";
+            if (delta) {
+              accumulated += delta;
+              updateNodeData(id, { outputText: accumulated });
             }
           } catch { /* skip malformed SSE lines */ }
         }
