@@ -12,6 +12,8 @@
   },
   "include": [
     "../lib/guest/db.ts",
-    "test-local-db.ts"
+    "../lib/workflowVariables.ts",
+    "test-local-db.ts",
+    "test-workflow-variables.ts"
   ]
 }

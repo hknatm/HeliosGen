@@ -35,9 +35,11 @@ export interface NodeData extends Record<string, unknown> {
   prompt?: string;
   /** Stable key emitted by a Variable node for deterministic token resolution. */
   variableKey?: string;
-  /** Typed Variable-node value. */
+  /** Typed Variable-node value (legacy single-field workflow compatibility). */
   variableValue?: string;
   variableType?: "text" | "number" | "boolean" | "json";
+  /** Structured fields emitted by a Variables node. */
+  variables?: Array<{ id: string; key: string; value: string; type: "text" | "number" | "boolean" | "json" }>;
   /** Prompt Composer template and its resolved deterministic output. */
   template?: string;
   resolvedPrompt?: string;
