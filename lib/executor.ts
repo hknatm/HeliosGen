@@ -127,6 +127,12 @@ export function resolveInputs(
     if (src.type === "promptNode") {
       result.prompt = src.data.prompt as string | undefined;
     }
+    if (src.type === "variableNode") {
+      result.prompt = src.data.variableValue as string | undefined;
+    }
+    if (src.type === "promptComposerNode") {
+      result.prompt = (src.data.resolvedPrompt ?? src.data.prompt) as string | undefined;
+    }
     if (src.type === "assistantNode") {
       result.prompt = src.data.outputText as string | undefined;
     }

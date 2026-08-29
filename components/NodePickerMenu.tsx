@@ -34,7 +34,8 @@ function closestRatio(ratioFloat: number, candidates: string[]): string | null {
 // Node types whose OUTPUT can feed a given input handle
 function sourceNodeTypesFor(targetHandle: string | null): string[] {
   switch (targetHandle) {
-    case "prompt":                         return ["promptNode", "assistantNode"];
+    case "prompt":                         return ["promptNode", "assistantNode", "promptComposerNode", "variableNode"];
+    case "variables":                      return ["variableNode"];
     case "image":
     case "startFrame":
     case "endFrame":
@@ -74,6 +75,8 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   videoInputNode:     "VIDEO",
   imageInputNode:     "IMAGE",
   promptNode:         "TEXT",
+  variableNode:       "VARIABLE",
+  promptComposerNode: "COMPOSER",
   generateNode:       "IMAGE GEN",
   videoGeneratorNode: "VIDEO GEN",
   assistantNode:      "ASSISTANT",
@@ -101,6 +104,8 @@ function targetHandleFor(
   targetNodeType: string,
   sourceHandleId: string | null,
 ): string | null {
+  if (targetNodeType === "promptComposerNode" && sourceNodeType === "variableNode") return "variables";
+
   // Typed output handles take priority
   if (sourceHandleId) {
     switch (sourceHandleId) {
@@ -124,7 +129,7 @@ function targetHandleFor(
     }
   }
   // Single-output nodes — fall back to node-type routing
-  if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode") return "prompt";
+  if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "promptComposerNode" || sourceNodeType === "variableNode") return "prompt";
   if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode") {
     if (targetNodeType === "videoGeneratorNode") return "startFrame";
     if (targetNodeType === "generateNode")       return "image";

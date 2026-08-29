@@ -37,6 +37,8 @@ import VideoInputNode from "./nodes/VideoInputNode";
 import GenerateNode from "./nodes/GenerateNode";
 import VideoGeneratorNode from "./nodes/VideoGeneratorNode";
 import AssistantNode from "./nodes/AssistantNode";
+import VariableNode from "./nodes/VariableNode";
+import PromptComposerNode from "./nodes/PromptComposerNode";
 import GroupNode from "./nodes/GroupNode";
 import NodePickerMenu, { DropState } from "./NodePickerMenu";
 import SelectionToolbar from "./SelectionToolbar";
@@ -70,6 +72,8 @@ const nodeTypes = {
   generateNode: GenerateNode,
   videoGeneratorNode: VideoGeneratorNode,
   assistantNode: AssistantNode,
+  variableNode: VariableNode,
+  promptComposerNode: PromptComposerNode,
   groupNode: GroupNode,
 };
 
@@ -160,8 +164,12 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     generateNode: "IMAGE GEN",
     videoGeneratorNode: "VIDEO GEN",
     assistantNode: "ASSISTANT",
+    variableNode: "VARIABLE",
+    promptComposerNode: "COMPOSER",
   };
   if (type === "assistantNode") return "ASSISTANT";
+  if (type === "variableNode") return `VARIABLE #${count}`;
+  if (type === "promptComposerNode") return `COMPOSER #${count}`;
   return `${names[type] ?? type} #${count}`;
 }
 
@@ -971,12 +979,18 @@ export default function WorkflowCanvas() {
         return connection.targetHandle === "decorativeText" || connection.targetHandle === "decorativeImage";
       }
 
-      // Prompt handles only accept text-producing nodes
+      // Prompt handles accept deterministic text sources and text-producing nodes.
       if (
         connection.targetHandle === "prompt" &&
         source?.type !== "promptNode" &&
-        source?.type !== "assistantNode"
+        source?.type !== "assistantNode" &&
+        source?.type !== "variableNode" &&
+        source?.type !== "promptComposerNode"
       ) return false;
+
+      // Prompt Composer tokens are named by Variable nodes, so only those
+      // sources can connect to its variables input.
+      if (connection.targetHandle === "variables" && source?.type !== "variableNode") return false;
 
       // videoRef handle only accepts video nodes
       if (connection.targetHandle === "videoRef") {

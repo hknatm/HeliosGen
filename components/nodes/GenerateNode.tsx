@@ -400,7 +400,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
     const promptEdge = edges.find((e) => e.target === id && e.targetHandle === "prompt");
     if (!promptEdge) return null;
     const promptNode = nodes.find((n) => n.id === promptEdge.source);
-    const text = (promptNode?.data?.prompt as string) ?? "";
+    const text = (promptNode?.data?.resolvedPrompt ?? promptNode?.data?.variableValue ?? promptNode?.data?.prompt as string) ?? "";
     const cfg = IMAGE_MODELS.find((m) => m.id === model);
     const hasImages = edges.some((e) => e.target === id && e.targetHandle === "image");
     const limit = (!hasImages && cfg?.textOnlyPromptMaxLength)

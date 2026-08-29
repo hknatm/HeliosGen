@@ -1,6 +1,6 @@
 // Shared node type definitions — imported by both Sidebar and NodePickerMenu
 import React from "react";
-import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard } from "lucide-react";
+import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine } from "lucide-react";
 
 export type NodeCategory = "generators" | "resources";
 
@@ -14,6 +14,8 @@ export const NODE_META: Record<
   generateNode:       { accent: "#2DD4BF", bg: "#001f1f",  bigIcon: <Sparkles      size={18} strokeWidth={1.7} /> },
   assistantNode:      { accent: "#FBBF24", bg: "#1c1000",  bigIcon: <Bot           size={18} strokeWidth={1.7} /> },
   videoGeneratorNode: { accent: "#5EEAD4", bg: "#042f2e",  bigIcon: <Clapperboard  size={18} strokeWidth={1.7} /> },
+  variableNode:       { accent: "#a78bfa", bg: "#25154a",  bigIcon: <Braces      size={18} strokeWidth={1.7} /> },
+  promptComposerNode: { accent: "#f472b6", bg: "#4a102f",  bigIcon: <Combine     size={18} strokeWidth={1.7} /> },
 };
 
 export const NODES: Array<{
@@ -67,6 +69,22 @@ export const NODES: Array<{
     },
 
     /* ── Resources ──────────────────────────────────────────────────────────── */
+    {
+      type: "variableNode",
+      category: "resources",
+      canReceiveConnection: false,
+      icon: <Braces size={14} strokeWidth={1.5} />,
+      label: "Variable",
+      description: "Named reusable workflow value",
+    },
+    {
+      type: "promptComposerNode",
+      category: "resources",
+      canReceiveConnection: true,
+      icon: <Combine size={14} strokeWidth={1.5} />,
+      label: "Prompt Composer",
+      description: "Resolve {{variables}} into a prompt",
+    },
     {
       type: "promptNode",
       category: "resources",
@@ -139,6 +157,8 @@ export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   promptNode: { w: 520, h: 250 },
   imageInputNode: { w: 200, h: 160 },
   videoInputNode: { w: 220, h: 180 },
+  variableNode: { w: 280, h: 220 },
+  promptComposerNode: { w: 420, h: 300 },
 };
 
 export const FALLBACK_SIZE = { w: 280, h: 280 };

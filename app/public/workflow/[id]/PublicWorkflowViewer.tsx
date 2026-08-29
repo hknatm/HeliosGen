@@ -20,6 +20,8 @@ import VideoInputNode from "@/components/nodes/VideoInputNode";
 import GenerateNode from "@/components/nodes/GenerateNode";
 import VideoGeneratorNode from "@/components/nodes/VideoGeneratorNode";
 import AssistantNode from "@/components/nodes/AssistantNode";
+import VariableNode from "@/components/nodes/VariableNode";
+import PromptComposerNode from "@/components/nodes/PromptComposerNode";
 import GroupNode from "@/components/nodes/GroupNode";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 
@@ -30,6 +32,8 @@ const nodeTypes = {
   generateNode: GenerateNode,
   videoGeneratorNode: VideoGeneratorNode,
   assistantNode: AssistantNode,
+  variableNode: VariableNode,
+  promptComposerNode: PromptComposerNode,
   groupNode: GroupNode,
 };
 

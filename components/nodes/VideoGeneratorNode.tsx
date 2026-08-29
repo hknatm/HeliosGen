@@ -399,7 +399,7 @@ export default function VideoGeneratorNode({ id, data, selected }: NodeProps<Vid
     const promptEdge = edges.find((e) => e.target === id && e.targetHandle === "prompt");
     if (!promptEdge) return false;
     const promptNode = nodes.find((n) => n.id === promptEdge.source);
-    const text = (promptNode?.data?.prompt as string) ?? "";
+    const text = (promptNode?.data?.resolvedPrompt ?? promptNode?.data?.variableValue ?? promptNode?.data?.prompt as string) ?? "";
     const limit = cfg.apiInput.promptMaxLength ?? Infinity;
     return text.length > limit;
   })();

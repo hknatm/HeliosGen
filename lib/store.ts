@@ -33,6 +33,14 @@ export interface NodeData extends Record<string, unknown> {
   status?: NodeStatus;
   // shared
   prompt?: string;
+  /** Stable key emitted by a Variable node for deterministic token resolution. */
+  variableKey?: string;
+  /** Typed Variable-node value. */
+  variableValue?: string;
+  variableType?: "text" | "number" | "boolean" | "json";
+  /** Prompt Composer template and its resolved deterministic output. */
+  template?: string;
+  resolvedPrompt?: string;
   // generate node
   mode?: GenerateMode;
   model?: string;
@@ -91,6 +99,8 @@ export function getNodeLabel(type: string, n: number): string {
     imageInputNode:      `Image #${n}`,
     generateNode:        `Image Generator #${n}`,
     videoGeneratorNode:  `Video Generator #${n}`,
+    variableNode:        `Variable #${n}`,
+    promptComposerNode:  `Prompt Composer #${n}`,
   };
   return map[type] ?? `Node #${n}`;
 }

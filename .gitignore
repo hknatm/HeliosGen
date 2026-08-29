@@ -31,6 +31,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Private agent instructions and local agent state
+dev-docs/
 AGENTS.md
 AGENT.md
 agents.md

@@ -25,7 +25,7 @@ const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
     id: "resources",
     label: "INPUTS",
-    nodeTypes: ["promptNode"],
+    nodeTypes: ["variableNode", "promptComposerNode", "promptNode"],
   },
 ];
 
@@ -96,8 +96,12 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         generateNode: "IMAGE GEN",
         videoGeneratorNode: "VIDEO GEN",
         assistantNode: "ASSISTANT",
+        variableNode: "VARIABLE",
+        promptComposerNode: "COMPOSER",
       };
-      const label = `${DISPLAY[type] ?? type} #${count}`;
+      const label = type === "variableNode" ? `VARIABLE #${count}`
+        : type === "promptComposerNode" ? `COMPOSER #${count}`
+        : `${DISPLAY[type] ?? type} #${count}`;
 
       let nodeX: number;
       let nodeY: number;
