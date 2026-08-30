@@ -781,6 +781,26 @@ body {
   opacity: 1;
 }
 
+/* ── Structured node field lists ─────────────────────── */
+.node-scroll-region {
+  scrollbar-width: thin;
+  scrollbar-color: #3A4055 transparent;
+}
+
+.node-scroll-region::-webkit-scrollbar {
+  width: 7px;
+}
+
+.node-scroll-region::-webkit-scrollbar-thumb {
+  background: #3A4055;
+  border: 2px solid #141820;
+  border-radius: 999px;
+}
+
+.node-scroll-region::-webkit-scrollbar-thumb:hover {
+  background: #596178;
+}
+
 /* ── Toolbar buttons ─────────────────────────────────── */
 .toolbar-btn {
   font-size: 13px;

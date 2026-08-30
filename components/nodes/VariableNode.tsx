@@ -50,11 +50,26 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
   const onNodesChange = useWorkflowStore((state) => state.onNodesChange);
   const cardRef = useRef<HTMLDivElement>(null);
+  const fieldsRef = useRef<HTMLDivElement>(null);
   const fields = useMemo(() => fieldsFromData(data), [data]);
 
   useEffect(() => {
     if (!Array.isArray(data.variables)) updateNodeData(id, { variables: fields });
   }, [data.variables, fields, id, updateNodeData]);
+
+  useEffect(() => {
+    const fieldsElement = fieldsRef.current;
+    if (!fieldsElement) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return;
+      const canScroll = fieldsElement.scrollHeight > fieldsElement.clientHeight;
+      if (!canScroll) return;
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    fieldsElement.addEventListener("wheel", onWheel, { passive: true });
+    return () => fieldsElement.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => {
     if (!selected || !cardRef.current) return;
@@ -95,7 +110,7 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
           <span style={{ color: "rgba(196,181,253,0.75)", fontSize: 10, fontFamily: "monospace" }}>{fields.length} field{fields.length === 1 ? "" : "s"}</span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, overflowY: "auto", paddingRight: 2, minHeight: 0, flex: 1 }}>
+        <div ref={fieldsRef} className="node-scroll-region" style={{ display: "flex", flexDirection: "column", gap: 7, overflowY: "auto", overscrollBehavior: "contain", paddingRight: 2, minHeight: 0, flex: 1 }}>
           {fields.map((field) => {
             const validKey = isValidVariableKey(field.key);
             const duplicate = duplicateKeys.has(field.key);
