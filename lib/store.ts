@@ -37,9 +37,9 @@ export interface NodeData extends Record<string, unknown> {
   variableKey?: string;
   /** Typed Variable-node value (legacy single-field workflow compatibility). */
   variableValue?: string;
-  variableType?: "text" | "number" | "boolean" | "json";
-  /** Structured fields emitted by a Variables node. */
-  variables?: Array<{ id: string; key: string; value: string; type: "text" | "number" | "boolean" | "json" }>;
+  variableType?: "text" | "number" | "boolean" | "json" | "color";
+  /** Structured fields emitted by a Variables, Brand Context, or Image Style Profile node. */
+  variables?: Array<{ id: string; key: string; value: string; type: "text" | "number" | "boolean" | "json" | "color" }>;
   /** Prompt Composer template and its resolved deterministic output. */
   template?: string;
   resolvedPrompt?: string;
@@ -102,6 +102,8 @@ export function getNodeLabel(type: string, n: number): string {
     generateNode:        `Image Generator #${n}`,
     videoGeneratorNode:  `Video Generator #${n}`,
     variableNode:        `Variable #${n}`,
+    brandProfileNode:    `Brand #${n}`,
+    styleProfileNode:    `Style #${n}`,
     promptComposerNode:  `Prompt Composer #${n}`,
   };
   return map[type] ?? `Node #${n}`;

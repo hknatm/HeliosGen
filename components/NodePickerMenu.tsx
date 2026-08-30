@@ -35,7 +35,7 @@ function closestRatio(ratioFloat: number, candidates: string[]): string | null {
 function sourceNodeTypesFor(targetHandle: string | null): string[] {
   switch (targetHandle) {
     case "prompt":                         return ["promptNode", "assistantNode", "promptComposerNode", "variableNode"];
-    case "variables":                      return ["variableNode"];
+    case "variables":                      return ["variableNode", "brandProfileNode", "styleProfileNode"];
     case "image":
     case "startFrame":
     case "endFrame":
@@ -76,6 +76,8 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   imageInputNode:     "IMAGE",
   promptNode:         "TEXT",
   variableNode:       "VARIABLE",
+  brandProfileNode:   "BRAND",
+  styleProfileNode:   "STYLE",
   promptComposerNode: "COMPOSER",
   generateNode:       "IMAGE GEN",
   videoGeneratorNode: "VIDEO GEN",
@@ -104,7 +106,7 @@ function targetHandleFor(
   targetNodeType: string,
   sourceHandleId: string | null,
 ): string | null {
-  if (targetNodeType === "promptComposerNode" && sourceNodeType === "variableNode") return "variables";
+  if (targetNodeType === "promptComposerNode" && (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode")) return "variables";
 
   // Typed output handles take priority
   if (sourceHandleId) {
@@ -292,7 +294,7 @@ export default function NodePickerMenu({ dropState, onClose }: Props) {
         if (dropState.sourceHandleId && HANDLE_ONLY_VIDEO_GEN.has(dropState.sourceHandleId)) {
           return n.type === "videoGeneratorNode";
         }
-        return true;
+        return targetHandleFor(dropState.sourceNodeType, n.type, dropState.sourceHandleId) !== null;
       });
 
   // Preview line color

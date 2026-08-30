@@ -5,6 +5,7 @@ import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import { NodeData, useWorkflowStore } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
+import { isProfileNode, profileTokenPrefix } from "@/lib/profileNodes";
 import {
   isValidVariableKey,
   resolveWorkflowTemplate,
@@ -39,17 +40,18 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
     const incoming = edges.filter((edge) => edge.target === id && edge.targetHandle === "variables");
     return incoming.flatMap((edge): ResolvedWorkflowVariable[] => {
       const source = nodes.find((node) => node.id === edge.source);
-      if (!source || source.type !== "variableNode") return [];
+      if (!source || (source.type !== "variableNode" && !isProfileNode(source.type))) return [];
       const fields = Array.isArray(source.data.variables)
         ? source.data.variables as WorkflowVariableField[]
         : legacyField(source);
+      const prefix = profileTokenPrefix(source.type);
       return fields
         .filter((field) => isValidVariableKey(field.key))
         .map((field) => ({
-          key: field.key,
+          key: `${prefix}${field.key}`,
           value: serializeVariableValue(field),
           sourceId: source.id,
-          sourceLabel: String(source.data.label ?? "Variables"),
+          sourceLabel: String(source.data.label ?? (prefix ? "Profile" : "Variables")),
         }));
     });
   }, [edges, id, nodes]);
@@ -126,7 +128,7 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
                 }}
                 style={{ color: "#ddd6fe", background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.24)", padding: "3px 7px", borderRadius: 4, fontSize: 10, fontFamily: "monospace", cursor: readOnly ? "default" : "grab" }}
               >{key}</button>
-            )) : <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>Connect a Variables node to add keys.</span>}
+            )) : <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>Connect a Variables, Brand Context, or Image Style Profile node to add keys.</span>}
           </div>
         </div>
 

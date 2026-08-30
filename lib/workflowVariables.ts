@@ -1,4 +1,4 @@
-export type WorkflowVariableType = "text" | "number" | "boolean" | "json";
+export type WorkflowVariableType = "text" | "number" | "boolean" | "json" | "color";
 
 export interface WorkflowVariableField {
   id: string;
@@ -15,6 +15,7 @@ export interface ResolvedWorkflowVariable {
 }
 
 export const VARIABLE_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 export function normalizeVariableKey(value: string): string {
   return value
@@ -27,6 +28,19 @@ export function normalizeVariableKey(value: string): string {
 
 export function isValidVariableKey(key: string): boolean {
   return VARIABLE_KEY_PATTERN.test(key);
+}
+
+export function normalizeHexColor(value: string): string {
+  const trimmed = value.trim();
+  if (!HEX_COLOR_PATTERN.test(trimmed)) return trimmed;
+  const expanded = trimmed.length === 4
+    ? `#${trimmed.slice(1).split("").map((part) => part + part).join("")}`
+    : trimmed;
+  return expanded.toUpperCase();
+}
+
+export function isValidHexColor(value: string): boolean {
+  return HEX_COLOR_PATTERN.test(value.trim());
 }
 
 export function serializeVariableValue(field: Pick<WorkflowVariableField, "type" | "value">): string {
@@ -52,7 +66,7 @@ export function resolveWorkflowTemplate(
   const missingKeys = new Set<string>();
   const duplicateSet = new Set(duplicateKeys);
 
-  const resolved = template.replace(/{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}/g, (token, key: string) => {
+  const resolved = template.replace(/{{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*}}/g, (token, key: string) => {
     if (duplicateSet.has(key) || !valueByKey.has(key)) {
       missingKeys.add(key);
       return token;

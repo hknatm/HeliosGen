@@ -39,6 +39,8 @@ import VideoGeneratorNode from "./nodes/VideoGeneratorNode";
 import AssistantNode from "./nodes/AssistantNode";
 import VariableNode from "./nodes/VariableNode";
 import PromptComposerNode from "./nodes/PromptComposerNode";
+import BrandProfileNode from "./nodes/BrandProfileNode";
+import StyleProfileNode from "./nodes/StyleProfileNode";
 import GroupNode from "./nodes/GroupNode";
 import NodePickerMenu, { DropState } from "./NodePickerMenu";
 import SelectionToolbar from "./SelectionToolbar";
@@ -73,6 +75,8 @@ const nodeTypes = {
   videoGeneratorNode: VideoGeneratorNode,
   assistantNode: AssistantNode,
   variableNode: VariableNode,
+  brandProfileNode: BrandProfileNode,
+  styleProfileNode: StyleProfileNode,
   promptComposerNode: PromptComposerNode,
   groupNode: GroupNode,
 };
@@ -165,10 +169,14 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     videoGeneratorNode: "VIDEO GEN",
     assistantNode: "ASSISTANT",
     variableNode: "VARIABLE",
+    brandProfileNode: "BRAND",
+    styleProfileNode: "STYLE",
     promptComposerNode: "COMPOSER",
   };
   if (type === "assistantNode") return "ASSISTANT";
   if (type === "variableNode") return `VARIABLE #${count}`;
+  if (type === "brandProfileNode") return `BRAND #${count}`;
+  if (type === "styleProfileNode") return `STYLE #${count}`;
   if (type === "promptComposerNode") return `COMPOSER #${count}`;
   return `${names[type] ?? type} #${count}`;
 }
@@ -988,9 +996,8 @@ export default function WorkflowCanvas() {
         source?.type !== "promptComposerNode"
       ) return false;
 
-      // Prompt Composer tokens are named by Variable nodes, so only those
-      // sources can connect to its variables input.
-      if (connection.targetHandle === "variables" && source?.type !== "variableNode") return false;
+      // Prompt Composer tokens are named by Variables and Profile (Brand Context / Image Style Profile) nodes.
+      if (connection.targetHandle === "variables" && source?.type !== "variableNode" && source?.type !== "brandProfileNode" && source?.type !== "styleProfileNode") return false;
 
       // videoRef handle only accepts video nodes
       if (connection.targetHandle === "videoRef") {
@@ -999,7 +1006,7 @@ export default function WorkflowCanvas() {
 
       // Image/resource handles do not accept text (prompt) nodes
       if (
-        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "promptComposerNode") &&
+        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode" || source?.type === "promptComposerNode") &&
         (connection.targetHandle === "image" ||
           connection.targetHandle === "resource" ||
           connection.targetHandle === "startFrame" ||

@@ -13,6 +13,7 @@
   "include": [
     "../lib/guest/db.ts",
     "../lib/workflowVariables.ts",
+    "../lib/profileNodes.ts",
     "test-local-db.ts",
     "test-workflow-variables.ts"
   ]

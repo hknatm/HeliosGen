@@ -1,6 +1,6 @@
 // Shared node type definitions — imported by both Sidebar and NodePickerMenu
 import React from "react";
-import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine } from "lucide-react";
+import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus } from "lucide-react";
 
 export type NodeCategory = "generators" | "resources";
 
@@ -15,6 +15,8 @@ export const NODE_META: Record<
   assistantNode:      { accent: "#FBBF24", bg: "#1c1000",  bigIcon: <Bot           size={18} strokeWidth={1.7} /> },
   videoGeneratorNode: { accent: "#5EEAD4", bg: "#042f2e",  bigIcon: <Clapperboard  size={18} strokeWidth={1.7} /> },
   variableNode:       { accent: "#a78bfa", bg: "#25154a",  bigIcon: <Braces      size={18} strokeWidth={1.7} /> },
+  brandProfileNode:   { accent: "#2dd4bf", bg: "#043f3b",  bigIcon: <Palette     size={18} strokeWidth={1.7} /> },
+  styleProfileNode:   { accent: "#38bdf8", bg: "#0c2a40",  bigIcon: <ImagePlus    size={18} strokeWidth={1.7} /> },
   promptComposerNode: { accent: "#f472b6", bg: "#4a102f",  bigIcon: <Combine     size={18} strokeWidth={1.7} /> },
 };
 
@@ -76,6 +78,22 @@ export const NODES: Array<{
       icon: <Braces size={14} strokeWidth={1.5} />,
       label: "Variable",
       description: "Named reusable workflow value",
+    },
+    {
+      type: "brandProfileNode",
+      category: "resources",
+      canReceiveConnection: false,
+      icon: <Palette size={14} strokeWidth={1.5} />,
+      label: "Brand Context",
+      description: "Reusable structured style context",
+    },
+    {
+      type: "styleProfileNode",
+      category: "resources",
+      canReceiveConnection: false,
+      icon: <ImagePlus size={14} strokeWidth={1.5} />,
+      label: "Image Style Profile",
+      description: "Deterministic image style instructions",
     },
     {
       type: "promptComposerNode",
@@ -158,6 +176,8 @@ export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   imageInputNode: { w: 200, h: 160 },
   videoInputNode: { w: 220, h: 180 },
   variableNode: { w: 280, h: 220 },
+  brandProfileNode: { w: 330, h: 310 },
+  styleProfileNode: { w: 330, h: 340 },
   promptComposerNode: { w: 420, h: 300 },
 };
 
