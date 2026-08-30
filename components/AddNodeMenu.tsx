@@ -5,6 +5,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { NODES, NODE_SIZE, FALLBACK_SIZE, NODE_META, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { getToken } from "@/lib/galleryUtils";
+import { defaultStyleProfileJson } from "@/lib/profileNodes";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 
 import { Search, X, Upload, LayoutGrid } from "lucide-react";
@@ -14,7 +15,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 /* Node types replaced by Upload/Assets — hide from search results */
-const HIDDEN_FROM_MENU = new Set(["imageInputNode", "videoInputNode"]);
+const HIDDEN_FROM_MENU = new Set(["imageInputNode", "videoInputNode", "brandProfileNode"]);
 
 const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
@@ -25,7 +26,7 @@ const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
     id: "resources",
     label: "INPUTS",
-    nodeTypes: ["variableNode", "brandProfileNode", "styleProfileNode", "promptComposerNode", "promptNode"],
+    nodeTypes: ["variableNode", "styleProfileNode", "promptComposerNode", "promptNode"],
   },
 ];
 
@@ -64,7 +65,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
   }, [onClose, pickerOpen]);
 
   const q = query.trim().toLowerCase();
-  const allNodes = NODES.filter((n) => !HIDDEN_FROM_MENU.has(n.type));
+  const allNodes = NODES.filter((n) => !HIDDEN_FROM_MENU.has(n.type) && n.type !== "brandProfileNode");
   const filtered = q
     ? allNodes.filter((n) => n.label.toLowerCase().includes(q) || n.description.toLowerCase().includes(q))
     : null;
@@ -152,6 +153,10 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
       }
 
       const nodeId = `${type}-${uid()}`;
+      const seeded = { ...extraData };
+      if (type === "styleProfileNode" && typeof seeded.profileJson === "undefined") {
+        seeded.profileJson = defaultStyleProfileJson();
+      }
       addNode({
         id: nodeId,
         type,
@@ -160,7 +165,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
           type === "imageInputNode" || type === "videoInputNode"
             ? { width: size.w }
             : { width: size.w, height: size.h },
-        data: { label, status: "idle", ...getLastNodeSettings(type, nodesNow), ...extraData },
+        data: { label, status: "idle", ...getLastNodeSettings(type, nodesNow), ...seeded },
       });
 
       onClose();

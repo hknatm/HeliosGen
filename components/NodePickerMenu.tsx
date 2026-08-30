@@ -5,6 +5,7 @@ import { useWorkflowStore, NodeData } from "@/lib/store";
 import { edgeStyle, EDGE_COLORS } from "@/lib/edgeStyles";
 import { NODES, NODE_SIZE, FALLBACK_SIZE, NODE_META, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { VIDEO_MODELS, IMAGE_MODELS } from "@/lib/modelConfig";
+import { defaultStyleProfileJson } from "@/lib/profileNodes";
 
 // Extract the aspect ratio as a float from any source node type
 function nodeAspectRatioFloat(data: Record<string, unknown> | undefined): number | null {
@@ -213,12 +214,16 @@ export default function NodePickerMenu({ dropState, onClose }: Props) {
     }
 
     const nodeId = `${type}-${uid()}`;
+    const seeded = { ...extraData };
+    if (type === "styleProfileNode" && typeof seeded.profileJson === "undefined") {
+      seeded.profileJson = defaultStyleProfileJson();
+    }
     addNode({
       id:   nodeId,
       type,
       position,
       style: nodeStyle,
-      data: { label, status: "idle", ...getLastNodeSettings(type, nodesInStore), ...extraData },
+      data: { label, status: "idle", ...getLastNodeSettings(type, nodesInStore), ...seeded },
     });
 
     if (isInput) {
@@ -284,7 +289,9 @@ export default function NodePickerMenu({ dropState, onClose }: Props) {
 
   // ── Node list ────────────────────────────────────────────────────────────────
   const HANDLE_ONLY_VIDEO_GEN = new Set(["videoRefOut", "audioRefOut"]);
-  const linkable = isInput
+  // Brand Context is retained for legacy saved-space connections but is no
+  // longer offered as a creatable node in the picker.
+  const linkableRaw = isInput
     ? (() => {
         const allowed = new Set(sourceNodeTypesFor(dropState.sourceHandleId));
         return NODES.filter((n) => allowed.has(n.type));
@@ -296,6 +303,7 @@ export default function NodePickerMenu({ dropState, onClose }: Props) {
         }
         return targetHandleFor(dropState.sourceNodeType, n.type, dropState.sourceHandleId) !== null;
       });
+  const linkable = linkableRaw.filter((n) => n.type !== "brandProfileNode");
 
   // Preview line color
   const lineColor = isInput

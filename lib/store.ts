@@ -43,6 +43,12 @@ export interface NodeData extends Record<string, unknown> {
   /** Prompt Composer template and its resolved deterministic output. */
   template?: string;
   resolvedPrompt?: string;
+  /** Prompt Composer mode: "template" (deterministic, default) or "ai". */
+  composerMode?: "template" | "ai";
+  /** Text model used when a Prompt Composer runs in AI mode. */
+  composerModel?: string;
+  /** JSON-first Style Profile payload (valid JSON object). Preferred over `variables`. */
+  profileJson?: string;
   // generate node
   mode?: GenerateMode;
   model?: string;

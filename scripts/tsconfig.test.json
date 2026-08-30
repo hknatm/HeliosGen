@@ -14,7 +14,10 @@
     "../lib/guest/db.ts",
     "../lib/workflowVariables.ts",
     "../lib/profileNodes.ts",
+    "../lib/composerSources.ts",
+    "../lib/store.ts",
     "test-local-db.ts",
-    "test-workflow-variables.ts"
+    "test-workflow-variables.ts",
+    "test-composer.ts"
   ]
 }

@@ -21,6 +21,8 @@ import { useWorkflowStore, NodeData } from "@/lib/store";
 import { VIDEO_MODELS } from "@/lib/modelConfig";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 import { topoSort, resolveInputs } from "@/lib/executor";
+import { resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
+import { defaultStyleProfileJson } from "@/lib/profileNodes";
 import { NODE_SIZE, FALLBACK_SIZE, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { edgeStyle } from "@/lib/edgeStyles";
 import { createClient } from "@/lib/supabase/client";
@@ -1163,6 +1165,91 @@ export default function WorkflowCanvas() {
       const node = nodes.find((n) => n.id === nodeId) as Node<NodeData> | undefined;
       if (!node) continue;
 
+      // ── Prompt Composer ────────────────────────────────────────────────────
+      // Resolve structured Variables + Brand/Style context deterministically.
+      // In AI mode, compose through /api/assistant BEFORE downstream generators
+      // consume this node's prompt, so image/video nodes read the AI result.
+      if (node.type === "promptComposerNode") {
+        const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
+        const comp = resolveComposerTemplate(nodeId, fresh, edges);
+        const isAi = node.data.composerMode === "ai";
+
+        if (!isAi) {
+          if (node.data.resolvedPrompt !== comp.resolved || node.data.prompt !== comp.resolved) {
+            updateNodeData(nodeId, { resolvedPrompt: comp.resolved, prompt: comp.resolved });
+          }
+          push(`[${node.id}] resolved template (deterministic)`);
+          continue;
+        }
+
+        if (debugMode) {
+          console.log(`[DEBUG] composerNode=${node.id}`, { template: comp.template, model: node.data.composerModel });
+          push(`[DEBUG] ${node.id} — logged to console`);
+          continue;
+        }
+
+        if (!comp.resolved.trim()) {
+          push(`[${node.id}] skipped — resolved prompt is empty`, false);
+          continue;
+        }
+
+        push(`[${node.id}] composing with AI…`);
+        updateNodeData(nodeId, { status: "running", errorMsg: undefined });
+
+        try {
+          const model = (node.data.composerModel as string | undefined) ?? "claude-sonnet-4-6";
+          const customProvider = model.startsWith("custom:") ? loadCustomProviderConfig() : undefined;
+          const res = await fetch("/api/assistant", {
+            method: "POST",
+            headers: authHeaders(token),
+            body: JSON.stringify({
+              prompt: buildComposerPrompt(comp.connectedValues, comp.resolved, comp.template),
+              model,
+              systemPrompt: getSystemPrompt("promptComposer"),
+              ...(customProvider ? { customProvider } : {}),
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Composing failed" }));
+            throw new Error(err.error ?? "Composing failed");
+          }
+
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let accumulated = "";
+          outer: while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const payload = line.slice(6).trim();
+              if (payload === "[DONE]") break outer;
+              try {
+                const parsed = JSON.parse(payload);
+                const delta =
+                  (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
+                    ? parsed.delta.text
+                    : null) ??
+                  parsed.choices?.[0]?.delta?.content ??
+                  "";
+                if (delta) { accumulated += delta; updateNodeData(nodeId, { resolvedPrompt: accumulated, prompt: accumulated }); }
+              } catch { /* skip malformed SSE lines */ }
+            }
+          }
+          updateNodeData(nodeId, { status: "done", resolvedPrompt: accumulated, prompt: accumulated });
+          push(`[${node.id}] done`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          // Deterministic fallback: never block downstream image/video on an AI failure.
+          updateNodeData(nodeId, { status: "error", errorMsg: msg, resolvedPrompt: comp.resolved, prompt: comp.resolved });
+          push(`[${node.id}] error: ${msg} — used deterministic template`, false);
+        }
+      }
+
       // ── Image generator ─────────────────────────────────────────────────────
       if (node.type === "generateNode") {
         // Extract frames from VideoInputNodes on the image handle that lack a capturedFrameUrl.
@@ -1405,6 +1492,7 @@ export default function WorkflowCanvas() {
     const size = getDefaultNodeSize(type, currentState.lastNodeSize);
 
     const currentNodes = currentState.nodes;
+    const seededData: Partial<NodeData> = type === "styleProfileNode" ? { profileJson: defaultStyleProfileJson() } : {};
     addNode({
       id: `${type}-${uid()}`,
       type,
@@ -1412,7 +1500,7 @@ export default function WorkflowCanvas() {
       style: type === "imageInputNode" || type === "videoInputNode"
         ? { width: size.w }
         : { width: size.w, height: size.h },
-      data: { label: nodeLabel(type, currentNodes), status: "idle", ...getLastNodeSettings(type, currentNodes) },
+      data: { label: nodeLabel(type, currentNodes), status: "idle", ...getLastNodeSettings(type, currentNodes), ...seededData },
     });
   }, [addNode, insertEdge]);
 

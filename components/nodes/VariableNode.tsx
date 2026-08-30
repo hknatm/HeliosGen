@@ -91,6 +91,16 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
     saveFields(fields.map((field) => field.id === fieldId ? { ...field, ...patch } : field));
   }, [fields, saveFields]);
 
+  // Stick-to-cursor guards (mirror AssistantNode): when selected, stop the
+  // mousedown bubbling to ReactFlow (no node drag from fields); when unselected,
+  // preventDefault so the first click selects the node instead.
+  const fieldMouseDown = useCallback((e: React.MouseEvent) => {
+    if (selected) e.stopPropagation(); else e.preventDefault();
+  }, [selected]);
+  const buttonMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
   const duplicateKeys = new Set(fields
     .filter((field) => isValidVariableKey(field.key))
     .map((field) => field.key)
@@ -123,6 +133,8 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
                     disabled={readOnly}
                     placeholder="product_name"
                     aria-label="Variable key"
+                    onMouseDown={fieldMouseDown}
+                    className="nodrag"
                     onChange={(event) => updateField(field.id, { key: event.target.value })}
                     onBlur={(event) => updateField(field.id, { key: normalizeVariableKey(event.target.value) })}
                     style={{ width: "100%", boxSizing: "border-box", borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.9)", padding: "6px 7px", fontFamily: "monospace", fontSize: 11, outline: "none" }}
@@ -132,6 +144,8 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
                     disabled={readOnly}
                     placeholder={option.placeholder}
                     aria-label={`${field.key || "Variable"} value`}
+                    onMouseDown={fieldMouseDown}
+                    className="nodrag"
                     onChange={(event) => updateField(field.id, { value: event.target.value })}
                     onBlur={() => field.type === "json" && field.value.trim() && updateField(field.id, { value: serializeVariableValue(field) })}
                     style={{ width: "100%", minHeight: 38, resize: "vertical", boxSizing: "border-box", borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.16)", color: "rgba(255,255,255,0.82)", padding: "6px 7px", fontFamily: field.type === "json" ? "monospace" : "inherit", fontSize: 11, lineHeight: 1.4, outline: "none" }}
@@ -142,6 +156,7 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
                   value={field.type}
                   disabled={readOnly}
                   aria-label={`${field.key || "Variable"} type`}
+                  onMouseDown={buttonMouseDown}
                   onChange={(event) => updateField(field.id, { type: event.target.value as WorkflowVariableType })}
                   style={{ width: "100%", borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "#151821", color: "rgba(255,255,255,0.78)", padding: "6px 4px", fontSize: 10, outline: "none" }}
                 >
@@ -151,6 +166,8 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
                   type="button"
                   disabled={readOnly || fields.length === 1}
                   aria-label={`Remove ${field.key || "variable"}`}
+                  onMouseDown={buttonMouseDown}
+                  className="nodrag"
                   title={fields.length === 1 ? "Keep at least one field" : "Remove field"}
                   onClick={() => saveFields(fields.filter((item) => item.id !== field.id))}
                   style={{ width: 24, height: 26, padding: 0, border: "1px solid rgba(255,255,255,0.09)", borderRadius: 5, background: "transparent", color: fields.length === 1 ? "rgba(255,255,255,0.18)" : "rgba(248,113,113,0.75)", cursor: fields.length === 1 ? "not-allowed" : "pointer", fontSize: 16, lineHeight: 1 }}
@@ -163,6 +180,8 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
         <button
           type="button"
           disabled={readOnly}
+          onMouseDown={buttonMouseDown}
+          className="nodrag"
           onClick={() => saveFields([...fields, { id: fieldId(), key: "", value: "", type: "text" }])}
           style={{ alignSelf: "flex-start", border: "1px solid rgba(167,139,250,0.28)", background: "rgba(167,139,250,0.1)", color: "#ddd6fe", borderRadius: 6, padding: "5px 8px", cursor: readOnly ? "default" : "pointer", fontSize: 11, fontWeight: 600 }}
         >+ Add field</button>
