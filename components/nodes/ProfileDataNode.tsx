@@ -11,6 +11,14 @@ import {
   type ProfileNodeConfig,
 } from "@/lib/profileNodes";
 import {
+  COPY_SPACE_PRESETS,
+  parseStyleProfileObject,
+  readStyleComposition,
+  writeStyleComposition,
+  formatStyleProfileObject,
+  type StyleComposition,
+} from "@/lib/styleComposition";
+import {
   isValidHexColor,
   isValidVariableKey,
   normalizeHexColor,
@@ -137,6 +145,12 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
   // ── JSON-first editor state ──────────────────────────────────────────────
   const profileJson = (data.profileJson ?? "") as string;
   const parsed = useMemo(() => parseProfileJson(profileJson), [profileJson]);
+  const profileObject = useMemo(() => jsonMode ? parseStyleProfileObject(profileJson) : null, [jsonMode, profileJson]);
+  const composition = useMemo(() => profileObject ? readStyleComposition(profileObject) : null, [profileObject]);
+  const saveComposition = useCallback((patch: Partial<StyleComposition>) => {
+    if (!profileObject) return;
+    updateNodeData(id, { profileJson: formatStyleProfileObject(writeStyleComposition(profileObject, patch)) });
+  }, [id, profileObject, updateNodeData]);
 
   // Stick-to-cursor guards: when selected, stop the mousedown from bubbling to
   // ReactFlow (which would drag the node); when unselected, preventDefault so a
@@ -167,23 +181,73 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
         {jsonMode ? (
           <>
             <div ref={fieldsRef} className="node-scroll-region" style={{ display: "flex", flexDirection: "column", gap: 7, overflowY: "auto", overscrollBehavior: "contain", paddingRight: 2, minHeight: 0, flex: 1 }}>
-              <textarea
-                value={profileJson}
-                disabled={readOnly}
-                aria-label={`${config.displayName} JSON profile`}
-                spellCheck={false}
-                onChange={(event) => updateNodeData(id, { profileJson: event.target.value })}
-                onMouseDown={fieldMouseDown}
-                className="nodrag"
-                placeholder='{ "shot_type": "Product hero shot", "lighting": "Soft directional daylight" }'
-                style={{ width: "100%", minHeight: 120, resize: "vertical", boxSizing: "border-box", borderRadius: 7, border: `1px solid ${parsed.error ? "rgba(248,113,113,0.5)" : "rgba(255,255,255,0.1)"}`, background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.9)", padding: "8px 9px", fontFamily: "monospace", fontSize: 11, lineHeight: 1.5, outline: "none" }}
-              />
               {parsed.error ? (
-                <div style={{ borderRadius: 6, padding: "6px 8px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", color: "#fca5a5", fontSize: 10 }}>
-                  JSON parse error: {parsed.error}
-                </div>
-              ) : parsed.fields.length ? (
                 <>
+                  <textarea
+                    value={profileJson}
+                    disabled={readOnly}
+                    aria-label={`${config.displayName} JSON profile`}
+                    spellCheck={false}
+                    onChange={(event) => updateNodeData(id, { profileJson: event.target.value })}
+                    onMouseDown={fieldMouseDown}
+                    className="nodrag"
+                    style={{ width: "100%", minHeight: 120, resize: "vertical", boxSizing: "border-box", borderRadius: 7, border: "1px solid rgba(248,113,113,0.5)", background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.9)", padding: "8px 9px", fontFamily: "monospace", fontSize: 11, lineHeight: 1.5, outline: "none" }}
+                  />
+                  <div style={{ borderRadius: 6, padding: "6px 8px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", color: "#fca5a5", fontSize: 10 }}>
+                    JSON parse error: {parsed.error}
+                  </div>
+                </>
+              ) : composition ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 9, borderRadius: 8, border: `1px solid ${config.accent}3a`, background: config.accentBg }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ color: config.accentText, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em" }}>COMPOSITION & COPY SPACE</span>
+                    <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 9 }}>Ratio-independent</span>
+                  </div>
+                  <div aria-label="Composition preview" style={{ position: "relative", width: "100%", aspectRatio: "1.65 / 1", borderRadius: 6, overflow: "hidden", background: "linear-gradient(135deg, rgba(255,255,255,0.09), rgba(0,0,0,0.22))", border: "1px solid rgba(255,255,255,0.11)" }}>
+                    <div style={{ position: "absolute", left: `${composition.copySpace.x * 100}%`, top: `${composition.copySpace.y * 100}%`, width: `${composition.copySpace.width * 100}%`, height: `${composition.copySpace.height * 100}%`, boxSizing: "border-box", border: `1px dashed ${config.accentText}`, background: config.accentBg, display: "grid", placeItems: "center", color: config.accentText, fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>COPY SPACE</div>
+                    <div aria-label="Subject placement intent" style={{ position: "absolute", top: "50%", transform: "translate(-50%, -50%)", left: composition.subjectAnchor === "left_third" ? "17%" : composition.subjectAnchor === "right_third" ? "83%" : "50%", width: composition.subjectScale === "small" ? 24 : composition.subjectScale === "large" ? 46 : 34, height: composition.subjectScale === "small" ? 24 : composition.subjectScale === "large" ? 46 : 34, borderRadius: "50%", background: "rgba(255,255,255,0.78)", border: "2px solid rgba(8,15,26,0.8)", boxShadow: "0 2px 10px rgba(0,0,0,0.4)" }} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>SUBJECT
+                      <select value={composition.subjectAnchor} disabled={readOnly} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ subjectAnchor: event.target.value as StyleComposition["subjectAnchor"] })} style={{ borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 6px", fontSize: 10, outline: "none" }}><option value="left_third">Left third</option><option value="center">Center</option><option value="right_third">Right third</option></select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>SCALE
+                      <select value={composition.subjectScale} disabled={readOnly} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ subjectScale: event.target.value as StyleComposition["subjectScale"] })} style={{ borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 6px", fontSize: 10, outline: "none" }}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select>
+                    </label>
+                  </div>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>RESERVED COPY AREA
+                    <select value={composition.copySpacePreset} disabled={readOnly} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ copySpacePreset: event.target.value as StyleComposition["copySpacePreset"] })} style={{ borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 6px", fontSize: 10, outline: "none" }}>{COPY_SPACE_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}<option value="custom">Custom zone</option></select>
+                  </label>
+                  {composition.copySpacePreset === "custom" && <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>{(["x", "y", "width", "height"] as const).map((key) => <label key={key} style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>{key.toUpperCase()}<input type="number" min="0" max="1" step="0.01" value={Number(composition.copySpace[key].toFixed(2))} disabled={readOnly} aria-label={`Custom copy space ${key}`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ copySpace: { ...composition.copySpace, [key]: Number(event.target.value) } })} style={{ minWidth: 0, borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 4px", fontSize: 10, outline: "none" }} /></label>)}</div>}
+                  <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>COPY-AREA BACKGROUND
+                    <input value={composition.copySpaceBackground} disabled={readOnly} aria-label="Copy-area background expectation" onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ copySpaceBackground: event.target.value })} style={{ width: "100%", boxSizing: "border-box", borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 6px", fontSize: 10, outline: "none" }} />
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>TEXT CONTRAST
+                      <select value={composition.copySpaceContrast} disabled={readOnly} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ copySpaceContrast: event.target.value as StyleComposition["copySpaceContrast"] })} style={{ borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 6px", fontSize: 10, outline: "none" }}><option value="high">High contrast</option><option value="light">Light text</option><option value="dark">Dark text</option></select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.48)", fontSize: 9 }}>KEEP CLEAR OF
+                      <input value={composition.copySpaceAvoid.join(", ")} disabled={readOnly} aria-label="Copy area avoid rules" onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => saveComposition({ copySpaceAvoid: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} style={{ minWidth: 0, borderRadius: 5, border: "1px solid rgba(255,255,255,0.12)", background: "#111b28", color: "rgba(255,255,255,0.85)", padding: "5px 6px", fontSize: 10, outline: "none" }} />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+              {parsed.fields.length ? (
+                <>
+                  <details className="nodrag" onMouseDown={fieldMouseDown} style={{ borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.16)", padding: "6px 8px" }}>
+                    <summary style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, cursor: "pointer" }}>Advanced JSON profile</summary>
+                    <textarea
+                      value={profileJson}
+                      disabled={readOnly}
+                      aria-label={`${config.displayName} JSON profile`}
+                      spellCheck={false}
+                      onChange={(event) => updateNodeData(id, { profileJson: event.target.value })}
+                      onMouseDown={fieldMouseDown}
+                      className="nodrag"
+                      placeholder='{ "shot_type": "Product hero shot", "lighting": "Soft directional daylight" }'
+                      style={{ width: "100%", minHeight: 120, marginTop: 7, resize: "vertical", boxSizing: "border-box", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.9)", padding: "8px 9px", fontFamily: "monospace", fontSize: 11, lineHeight: 1.5, outline: "none" }}
+                    />
+                  </details>
                   <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em" }}>KEYS (preview)</span>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, minHeight: 0 }} aria-label="Style profile JSON keys">
                     {parsed.fields.map((field) => (

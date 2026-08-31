@@ -1,6 +1,6 @@
 // Shared node type definitions — imported by both Sidebar and NodePickerMenu
 import React from "react";
-import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus } from "lucide-react";
+import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus, Type } from "lucide-react";
 
 export type NodeCategory = "generators" | "resources";
 
@@ -17,6 +17,7 @@ export const NODE_META: Record<
   variableNode:       { accent: "#a78bfa", bg: "#25154a",  bigIcon: <Braces      size={18} strokeWidth={1.7} /> },
   brandProfileNode:   { accent: "#2dd4bf", bg: "#043f3b",  bigIcon: <Palette     size={18} strokeWidth={1.7} /> },
   styleProfileNode:   { accent: "#38bdf8", bg: "#0c2a40",  bigIcon: <ImagePlus    size={18} strokeWidth={1.7} /> },
+  textContentNode:    { accent: "#f59e0b", bg: "#442a06",  bigIcon: <Type         size={18} strokeWidth={1.7} /> },
   promptComposerNode: { accent: "#f472b6", bg: "#4a102f",  bigIcon: <Combine     size={18} strokeWidth={1.7} /> },
 };
 
@@ -96,12 +97,20 @@ export const NODES: Array<{
       description: "Deterministic image style instructions",
     },
     {
+      type: "textContentNode",
+      category: "resources",
+      canReceiveConnection: false,
+      icon: <Type size={14} strokeWidth={1.5} />,
+      label: "Text Content",
+      description: "Structured overlay copy and claims",
+    },
+    {
       type: "promptComposerNode",
       category: "resources",
       canReceiveConnection: true,
       icon: <Combine size={14} strokeWidth={1.5} />,
       label: "Prompt Composer",
-      description: "Resolve {{variables}} into a prompt",
+      description: "AI visual prompt from structured context",
     },
     {
       type: "promptNode",
@@ -177,7 +186,8 @@ export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   videoInputNode: { w: 220, h: 180 },
   variableNode: { w: 280, h: 220 },
   brandProfileNode: { w: 330, h: 310 },
-  styleProfileNode: { w: 330, h: 340 },
+  styleProfileNode: { w: 360, h: 460 },
+  textContentNode: { w: 330, h: 380 },
   promptComposerNode: { w: 420, h: 300 },
 };
 

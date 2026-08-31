@@ -1,5 +1,5 @@
 import { Node, Edge } from "@xyflow/react";
-import { NodeData } from "./store";
+import { NodeData, TextContent } from "./store";
 
 /** Topological sort — returns node ids in execution order */
 export function topoSort(nodes: Node<NodeData>[], edges: Edge[]): string[] {
@@ -66,6 +66,25 @@ export function buildPipelineWaves(nodes: Node<NodeData>[], edges: Edge[]): stri
 
 const FRAME_OUT_HANDLES = new Set(["startFrameOut", "endFrameOut", "imagePickOut"]);
 
+/** Stable textual form for an authored Text Content node. Its source wording is
+ * preserved; AI refinement is intentionally a future, separate node. */
+export function textContentToPrompt(content: TextContent | undefined): string {
+  if (!content || typeof content !== "object") return "";
+  const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+  const parts: string[] = [];
+  const eyebrow = text(content.eyebrow);
+  const title = text(content.title);
+  const subtitle = text(content.subtitle);
+  const cta = text(content.cta);
+  if (eyebrow) parts.push(`Eyebrow: ${eyebrow}`);
+  if (title) parts.push(`Title: ${title}`);
+  if (subtitle) parts.push(`Subtitle: ${subtitle}`);
+  const bullets = Array.isArray(content.bullets) ? content.bullets.map(text).filter(Boolean) : [];
+  if (bullets.length) parts.push(`Key points: ${bullets.join("; ")}`);
+  if (cta) parts.push(`Call to action: ${cta}`);
+  return parts.join("\n");
+}
+
 /** Returns the specific frame URL for a video node based on which output handle was used. */
 function resolveVideoNodeFrameUrl(src: Node<NodeData>, sourceHandle: string | null | undefined): string | undefined {
   if (src.type !== "videoInputNode" && src.type !== "videoGeneratorNode") return undefined;
@@ -129,6 +148,9 @@ export function resolveInputs(
     }
     if (src.type === "variableNode") {
       result.prompt = src.data.variableValue as string | undefined;
+    }
+    if (src.type === "textContentNode" && edge.targetHandle === "prompt") {
+      result.prompt = textContentToPrompt(src.data.textContent);
     }
     if (src.type === "promptComposerNode") {
       result.prompt = (src.data.resolvedPrompt ?? src.data.prompt) as string | undefined;

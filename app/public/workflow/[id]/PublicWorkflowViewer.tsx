@@ -24,6 +24,7 @@ import VariableNode from "@/components/nodes/VariableNode";
 import PromptComposerNode from "@/components/nodes/PromptComposerNode";
 import BrandProfileNode from "@/components/nodes/BrandProfileNode";
 import StyleProfileNode from "@/components/nodes/StyleProfileNode";
+import TextContentNode from "@/components/nodes/TextContentNode";
 import GroupNode from "@/components/nodes/GroupNode";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 
@@ -37,6 +38,7 @@ const nodeTypes = {
   variableNode: VariableNode,
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,
+  textContentNode: TextContentNode,
   promptComposerNode: PromptComposerNode,
   groupNode: GroupNode,
 };

@@ -5,7 +5,7 @@ import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import { NodeData, useWorkflowStore } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
-import { buildComposerContext, buildComposerPrompt, resolveComposerConnections } from "@/lib/composerSources";
+import { buildComposerContext, buildComposerPrompt, buildComposerTargetMedia, resolveComposerConnections } from "@/lib/composerSources";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 import { getSystemPrompt } from "@/lib/systemPrompt";
 import { createClient } from "@/lib/supabase/client";
@@ -78,6 +78,7 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
     )
   ), [composerContext]);
   const hasComposerContext = connectedKeys.length > 0;
+  const targetMedia = useMemo(() => buildComposerTargetMedia(id, nodes, edges), [edges, id, nodes]);
 
   useEffect(() => {
     if (!selected || !cardRef.current) return;
@@ -147,7 +148,7 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
         method: "POST",
         headers,
         body: JSON.stringify({
-          prompt: buildComposerPrompt(connectedValues),
+          prompt: buildComposerPrompt(connectedValues, targetMedia),
           model,
           systemPrompt: getSystemPrompt("promptComposer"),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
@@ -212,7 +213,7 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
         abortRef.current = null;
       }
     }
-  }, [busy, connectedValues, hasComposerContext, id, model, readOnly, updateNodeData]);
+  }, [busy, connectedValues, hasComposerContext, id, model, readOnly, targetMedia, updateNodeData]);
 
   const handleCancel = useCallback(() => {
     // Bump the sequence so the aborted stream cannot write a final output.
@@ -237,7 +238,8 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: 600 }}>Prompt Composer</div>
-            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>AI composes from connected context</div>
+            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>AI composes a native visual prompt from connected context</div>
+            {targetMedia && <div style={{ color: "rgba(249,168,212,0.72)", fontSize: 9, marginTop: 3 }}>{targetMedia.type === "video" ? "Video" : "Image"} target · {targetMedia.aspectRatio}</div>}
           </div>
 
           {/* Model selector */}

@@ -28,6 +28,21 @@ import {
 export type NodeStatus = "idle" | "pending" | "running" | "done" | "error";
 export type GenerateMode = "t2i" | "t2v" | "i2i" | "i2v";
 
+export type TextFontFamily = "Arial" | "Helvetica" | "Georgia" | "Times New Roman";
+export type TextAlignment = "left" | "center" | "right";
+
+export interface TextContent {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  bullets: string[];
+  cta: string;
+  fontFamily: TextFontFamily;
+  textColor: string;
+  accentColor: string;
+  alignment: TextAlignment;
+}
+
 export interface NodeData extends Record<string, unknown> {
   label: string;
   status?: NodeStatus;
@@ -49,6 +64,8 @@ export interface NodeData extends Record<string, unknown> {
   composerModel?: string;
   /** JSON-first Style Profile payload (valid JSON object). Preferred over `variables`. */
   profileJson?: string;
+  /** Structured, deterministic source copy for a Text Content node. */
+  textContent?: TextContent;
   // generate node
   mode?: GenerateMode;
   model?: string;
@@ -110,6 +127,7 @@ export function getNodeLabel(type: string, n: number): string {
     variableNode:        `Variable #${n}`,
     brandProfileNode:    `Brand #${n}`,
     styleProfileNode:    `Style #${n}`,
+    textContentNode:     `Text Content #${n}`,
     promptComposerNode:  `Prompt Composer #${n}`,
   };
   return map[type] ?? `Node #${n}`;

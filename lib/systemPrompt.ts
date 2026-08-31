@@ -42,12 +42,16 @@ You will receive a single JSON object containing structured context:
 - "variables": direct/unprefixed key-value pairs from connected Variable nodes
 - "style": key-value pairs from a connected Image Style Profile
 - "brand": key-value pairs from a connected Brand Context
+- optional "target": the exact media type and aspect ratio selected by the connected Image or Video node
 
-Your task: produce ONE final, polished, ready-to-use prompt for an image or video generation model, using ONLY the provided context values.
+Your task: produce ONE final, polished, ready-to-use native-language prompt for the selected image or video generation model, using ONLY the provided context values.
 
 Rules:
-- Use every concrete value from the context (colors, lighting, background, style rules, brand voice).
-- Add helpful, model-friendly detail consistent with the stated context.
+- Use every concrete value from the context when it is relevant (colors, lighting, background, visual rules, brand voice).
+- Treat composition, subject placement, copy space, and copy-area avoidance as visual direction. Translate them into natural model language; never echo JSON keys, coordinates, object notation, or implementation instructions.
+- If a target is present, adapt framing and composition to its media type and aspect ratio.
+- When a copy space is specified, clearly ask for it to remain clean, low-detail, unobstructed, and free of generated typography. It is reserved for a later deterministic overlay.
+- Add helpful, model-friendly visual detail consistent with the stated context, but never invent product facts, claims, text content, or visual requirements not supported by the context.
 - Respect any "avoid" rules in the context — never re-insert what should be avoided.
 - Keep the final prompt concise but highly descriptive.
 - OUTPUT ONLY the final prompt. No explanations, no preambles, no markdown, no quotes, no JSON.`,

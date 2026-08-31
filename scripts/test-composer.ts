@@ -15,9 +15,18 @@ import {
 import {
   buildComposerContext,
   buildComposerPrompt,
+  buildComposerTargetMedia,
   resolveComposerConnections,
   resolveComposerTemplate,
 } from "../lib/composerSources";
+import {
+  COPY_SPACE_PRESETS,
+  DEFAULT_STYLE_COMPOSITION,
+  formatStyleProfileObject,
+  readStyleComposition,
+  writeStyleComposition,
+} from "../lib/styleComposition";
+import { textContentToPrompt } from "../lib/executor";
 
 let failures = 0;
 function assert(condition: boolean, message: string) {
@@ -66,6 +75,28 @@ assert(JSON.parse(again) !== undefined, "fields serialize back to valid JSON");
 const againFields = profileJsonToFields(again);
 assert(againFields.length === defFields.length, "serialize→parse round-trip preserves field count");
 
+console.log("── Composition and copy space ──────────────────────────────");
+
+const defaultProfile = JSON.parse(defJson) as Record<string, unknown>;
+const defaultComposition = readStyleComposition(defaultProfile);
+assert(defaultComposition.copySpacePreset === "left_two_thirds", "default profile reserves a left two-thirds copy area");
+assert(defaultComposition.subjectAnchor === "right_third", "default profile anchors the subject on the right third");
+assert(defaultComposition.copySpace.width > 0.65 && defaultComposition.copySpace.height === 1, "default copy area is normalized and ratio-independent");
+
+const rightThird = COPY_SPACE_PRESETS.find((item) => item.id === "right_third")!;
+const composedProfile = writeStyleComposition(defaultProfile, { copySpacePreset: "right_third", subjectAnchor: "left_third" });
+const composed = readStyleComposition(composedProfile);
+assert(composed.copySpace.x === rightThird.rect.x && composed.copySpace.width === rightThird.rect.width, "copy-space preset writes its deterministic normalized zone");
+assert(composed.subjectAnchor === "left_third", "subject placement persists independently of copy space");
+const customProfile = writeStyleComposition(composedProfile, { copySpacePreset: "custom", copySpace: { x: 0.1, y: 0.2, width: 0.5, height: 0.6 } });
+const custom = readStyleComposition(customProfile);
+assert(custom.copySpacePreset === "custom" && custom.copySpace.x === 0.1 && custom.copySpace.height === 0.6, "custom normalized composition zone round-trips");
+const boundedProfile = writeStyleComposition(customProfile, { copySpacePreset: "custom", copySpace: { x: 1, y: 1, width: 0, height: 0 } });
+const bounded = readStyleComposition(boundedProfile);
+assert(bounded.copySpace.x < 1 && bounded.copySpace.y < 1 && bounded.copySpace.width >= 0.01 && bounded.copySpace.height >= 0.01, "composition bounds always retain a renderable copy zone");
+assert(JSON.parse(formatStyleProfileObject(customProfile)) !== undefined, "composition editor serialization remains valid JSON");
+assert(DEFAULT_STYLE_COMPOSITION.copySpaceAvoid.includes("generated text"), "default copy area forbids generated text");
+
 console.log("── Style namespace resolution ──────────────────────────────");
 
 const styleNode = node("style-1", "styleProfileNode", { profileJson: defJson });
@@ -96,6 +127,19 @@ assert(!/Resolve the prompt template/i.test(prompt) && !/Template:/i.test(prompt
   "prompt body has no surrounding English instructions");
 assert(prompt.includes('"shot_type"') && prompt.includes("Product hero shot"),
   "prompt body carries namespaced style values");
+
+const imageTarget = node("image-target", "generateNode", { aspectRatio: "4:3" });
+const targetedPrompt = buildComposerPrompt(resolution.connectedValues, buildComposerTargetMedia("composer-1", [styleNode, composer, imageTarget], [...edges, edge("out", "composer-1", "image-target", "prompt")]));
+const targetedParsed = JSON.parse(targetedPrompt) as { target?: { type?: string; aspectRatio?: string } };
+assert(targetedParsed.target?.type === "image" && targetedParsed.target.aspectRatio === "4:3", "Composer context carries the selected image target ratio");
+const videoTarget = node("video-target", "videoGeneratorNode", { aspectRatio: "9:16" });
+const videoTargeted = buildComposerTargetMedia("composer-1", [composer, videoTarget], [edge("video-out", "composer-1", "video-target", "prompt")]);
+assert(videoTargeted?.type === "video" && videoTargeted.aspectRatio === "9:16", "Composer context carries video target metadata when wired");
+
+console.log("── Deterministic text content ──────────────────────────────");
+const textPrompt = textContentToPrompt({ eyebrow: "NEW", title: "Crystal keepsakes", subtitle: "A refined finishing touch", bullets: ["Premium K9 crystal", "", "Gift-ready box"], cta: "Explore the collection", fontFamily: "Arial", textColor: "#FFFFFF", accentColor: "#F59E0B", alignment: "left" });
+assert(textPrompt.includes("Title: Crystal keepsakes") && textPrompt.includes("Key points: Premium K9 crystal; Gift-ready box"), "Text Content serializes authored copy without rewriting it");
+assert(!textPrompt.includes("good K9") && !textPrompt.includes("memorable gifting"), "Text Content never performs AI copy refinement");
 
 console.log("── Namespaced structural context ──────────────────────────");
 

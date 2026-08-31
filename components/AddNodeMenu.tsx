@@ -26,7 +26,7 @@ const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
     id: "resources",
     label: "INPUTS",
-    nodeTypes: ["variableNode", "styleProfileNode", "promptComposerNode", "promptNode"],
+    nodeTypes: ["variableNode", "styleProfileNode", "textContentNode", "promptComposerNode", "promptNode"],
   },
 ];
 
@@ -100,11 +100,13 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         variableNode: "VARIABLE",
         brandProfileNode: "BRAND",
         styleProfileNode: "STYLE",
+        textContentNode: "TEXT CONTENT",
         promptComposerNode: "COMPOSER",
       };
       const label = type === "variableNode" ? `VARIABLE #${count}`
         : type === "brandProfileNode" ? `BRAND #${count}`
         : type === "styleProfileNode" ? `STYLE #${count}`
+        : type === "textContentNode" ? `TEXT CONTENT #${count}`
         : type === "promptComposerNode" ? `COMPOSER #${count}`
         : `${DISPLAY[type] ?? type} #${count}`;
 

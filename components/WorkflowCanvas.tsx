@@ -21,7 +21,7 @@ import { useWorkflowStore, NodeData } from "@/lib/store";
 import { VIDEO_MODELS } from "@/lib/modelConfig";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 import { topoSort, resolveInputs } from "@/lib/executor";
-import { buildComposerContext, resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
+import { buildComposerContext, buildComposerTargetMedia, resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
 import { defaultStyleProfileJson } from "@/lib/profileNodes";
 import { NODE_SIZE, FALLBACK_SIZE, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { edgeStyle } from "@/lib/edgeStyles";
@@ -43,6 +43,7 @@ import VariableNode from "./nodes/VariableNode";
 import PromptComposerNode from "./nodes/PromptComposerNode";
 import BrandProfileNode from "./nodes/BrandProfileNode";
 import StyleProfileNode from "./nodes/StyleProfileNode";
+import TextContentNode from "./nodes/TextContentNode";
 import GroupNode from "./nodes/GroupNode";
 import NodePickerMenu, { DropState } from "./NodePickerMenu";
 import SelectionToolbar from "./SelectionToolbar";
@@ -79,6 +80,7 @@ const nodeTypes = {
   variableNode: VariableNode,
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,
+  textContentNode: TextContentNode,
   promptComposerNode: PromptComposerNode,
   groupNode: GroupNode,
 };
@@ -173,12 +175,14 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     variableNode: "VARIABLE",
     brandProfileNode: "BRAND",
     styleProfileNode: "STYLE",
+    textContentNode: "TEXT CONTENT",
     promptComposerNode: "COMPOSER",
   };
   if (type === "assistantNode") return "ASSISTANT";
   if (type === "variableNode") return `VARIABLE #${count}`;
   if (type === "brandProfileNode") return `BRAND #${count}`;
   if (type === "styleProfileNode") return `STYLE #${count}`;
+  if (type === "textContentNode") return `TEXT CONTENT #${count}`;
   if (type === "promptComposerNode") return `COMPOSER #${count}`;
   return `${names[type] ?? type} #${count}`;
 }
@@ -995,6 +999,7 @@ export default function WorkflowCanvas() {
         source?.type !== "promptNode" &&
         source?.type !== "assistantNode" &&
         source?.type !== "variableNode" &&
+        source?.type !== "textContentNode" &&
         source?.type !== "promptComposerNode"
       ) return false;
 
@@ -1008,7 +1013,7 @@ export default function WorkflowCanvas() {
 
       // Image/resource handles do not accept text (prompt) nodes
       if (
-        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode" || source?.type === "promptComposerNode") &&
+        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "textContentNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode" || source?.type === "promptComposerNode") &&
         (connection.targetHandle === "image" ||
           connection.targetHandle === "resource" ||
           connection.targetHandle === "startFrame" ||
@@ -1196,7 +1201,7 @@ export default function WorkflowCanvas() {
             method: "POST",
             headers: authHeaders(token),
             body: JSON.stringify({
-              prompt: buildComposerPrompt(comp.connectedValues),
+              prompt: buildComposerPrompt(comp.connectedValues, buildComposerTargetMedia(nodeId, fresh, edges)),
               model,
               systemPrompt: getSystemPrompt("promptComposer"),
               ...(customProvider ? { customProvider } : {}),

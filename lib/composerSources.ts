@@ -124,6 +124,13 @@ export interface ComposerContext {
   brand: Record<string, string>;
 }
 
+/** Technical output metadata from a directly connected media target.
+ * It is authored by the image/video node, not guessed by the Composer. */
+export interface ComposerTargetMedia {
+  type: "image" | "video";
+  aspectRatio: string;
+}
+
 export function buildComposerContext(connectedValues: ResolvedWorkflowVariable[]): ComposerContext {
   const context: ComposerContext = { variables: {}, style: {}, brand: {} };
   const counts = new Map<string, number>();
@@ -145,6 +152,30 @@ export function buildComposerContext(connectedValues: ResolvedWorkflowVariable[]
  * no surrounding English instructions. The model's role/task/output rules come
  * exclusively from the Settings → Text Prompts → Prompt Composer system message.
  */
-export function buildComposerPrompt(connectedValues: ResolvedWorkflowVariable[]): string {
-  return JSON.stringify(buildComposerContext(connectedValues), null, 2);
+export function buildComposerTargetMedia(
+  composerNodeId: string,
+  nodes: Node<NodeData>[],
+  edges: Edge[],
+): ComposerTargetMedia | undefined {
+  const targetEdge = edges.find((edge) =>
+    edge.source === composerNodeId && edge.targetHandle === "prompt" &&
+    (nodes.find((node) => node.id === edge.target)?.type === "generateNode" ||
+      nodes.find((node) => node.id === edge.target)?.type === "videoGeneratorNode"),
+  );
+  if (!targetEdge) return undefined;
+  const target = nodes.find((node) => node.id === targetEdge.target);
+  if (!target) return undefined;
+  return {
+    type: target.type === "videoGeneratorNode" ? "video" : "image",
+    aspectRatio: typeof target.data.aspectRatio === "string" ? target.data.aspectRatio : target.type === "videoGeneratorNode" ? "16:9" : "1:1",
+  };
+}
+
+export function buildComposerPrompt(
+  connectedValues: ResolvedWorkflowVariable[],
+  target?: ComposerTargetMedia,
+): string {
+  const context: ComposerContext & { target?: ComposerTargetMedia } = buildComposerContext(connectedValues);
+  if (target) context.target = target;
+  return JSON.stringify(context, null, 2);
 }
