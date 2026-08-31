@@ -1,9 +1,15 @@
 /**
- * Shared Prompt Composer source/token resolution.
+ * Shared Prompt Composer source resolution.
  *
- * Both the PromptComposerNode UI and the WorkflowCanvas "Run All" flow resolve
- * a composer's connected sources through these pure helpers, so canvas runs and
- * the on-canvas preview always agree.
+ * The Prompt Composer is AI-only: it composes a final image/video prompt from
+ * ONLY (a) the Settings → Text Prompts → Prompt Composer system message and
+ * (b) the structured connected context (Variables / Style Profile / legacy
+ * Brand key-value JSON). No hard-coded natural-language task or prompt-template
+ * instructions are injected into the user prompt.
+ *
+ * The prompt body sent to /api/assistant is a deterministic JSON object built
+ * only from connected source values. Legacy `template` data is kept readable as
+ * compatibility data but is never rendered or used for new AI composition.
  */
 import type { Edge, Node } from "@xyflow/react";
 import type { NodeData } from "./store";
@@ -76,9 +82,10 @@ export interface ComposerResolution {
 }
 
 /**
- * Resolve the deterministic template for a composer node. The returned
- * `resolved` value is the deterministic output used in template mode and the
- * fallback when AI mode fails.
+ * Resolve the deterministic template for a composer node. Kept for legacy
+ * compatibility only — the AI-only Composer does not use the resolved template
+ * for new composition. The returned `connectedValues` feed the structured JSON
+ * context sent to the model.
  */
 export function resolveComposerTemplate(
   composerNodeId: string,
@@ -101,32 +108,43 @@ export function resolveComposerTemplate(
 }
 
 /**
- * Build the prompt sent to the assistant model in AI mode. It carries the
- * deterministic template plus the resolved structured context (Variables,
- * legacy Brand, Style JSON) so the model composes deterministically-aware text.
+ * Structured, namespaced context object built ONLY from connected source values.
+ *
+ * Semantic hierarchy:
+ *   - `variables` — direct/unprefixed values from Variable nodes
+ *   - `style`     — keys from a connected Image Style Profile (style.*)
+ *   - `brand`     — keys from a connected Brand Context (brand.*)
+ *
+ * Duplicate keys (same key from more than one source) and empty/missing values
+ * are excluded so malformed or ambiguous data never silently resolves/overwrites.
  */
-export function buildComposerPrompt(
-  connectedValues: ResolvedWorkflowVariable[],
-  resolved: string,
-  template: string,
-): string {
-  const context = JSON.stringify(
-    { variables: connectedValues.map((v) => ({ key: v.key, value: v.value })) },
-    null,
-    2,
-  );
-  return [
-    "Resolve the prompt template below into a final, ready-to-use prompt for an image/video model.",
-    "",
-    "Structured variable context:",
-    context,
-    "",
-    "Template:",
-    template,
-    "",
-    "Resolved template with substitutions already applied (use this as the base):",
-    resolved,
-    "",
-    "Output only the final prompt. Do not include explanations or markdown.",
-  ].join("\n");
+export interface ComposerContext {
+  variables: Record<string, string>;
+  style: Record<string, string>;
+  brand: Record<string, string>;
+}
+
+export function buildComposerContext(connectedValues: ResolvedWorkflowVariable[]): ComposerContext {
+  const context: ComposerContext = { variables: {}, style: {}, brand: {} };
+  const counts = new Map<string, number>();
+  for (const v of connectedValues) counts.set(v.key, (counts.get(v.key) ?? 0) + 1);
+  const duplicate = new Set([...counts.entries()].filter(([, c]) => c > 1).map(([k]) => k));
+
+  for (const v of connectedValues) {
+    if (duplicate.has(v.key)) continue;          // ambiguous — exclude entirely
+    if (!v.value || !v.value.trim()) continue;   // missing/empty — exclude
+    if (v.key.startsWith("style.")) context.style[v.key.slice("style.".length)] = v.value;
+    else if (v.key.startsWith("brand.")) context.brand[v.key.slice("brand.".length)] = v.value;
+    else context.variables[v.key] = v.value;
+  }
+  return context;
+}
+
+/**
+ * Build the prompt body sent to the assistant model. It is JSON text alone —
+ * no surrounding English instructions. The model's role/task/output rules come
+ * exclusively from the Settings → Text Prompts → Prompt Composer system message.
+ */
+export function buildComposerPrompt(connectedValues: ResolvedWorkflowVariable[]): string {
+  return JSON.stringify(buildComposerContext(connectedValues), null, 2);
 }

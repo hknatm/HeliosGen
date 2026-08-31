@@ -1555,7 +1555,7 @@ const TEXT_PROMPT_SPECS: TextPromptSpec[] = [
   { id: "chat", title: "Chat", description: "Used by the workspace chat and Quick Assist to craft better image/video prompts." },
   { id: "assistantNode", title: "Assistant Node", description: "Used by the Assistant node to rewrite a prompt into a clearer, more effective version." },
   { id: "workflowRun", title: "Workflow Run", description: "Used when rewriting a prompt during a workflow run." },
-  { id: "promptComposer", title: "Prompt Composer (AI)", description: "Used when a Prompt Composer node composes with AI. Instructs the model how to use your template and structured Style/Brand context." },
+  { id: "promptComposer", title: "Prompt Composer", description: "Sole prompt-policy control for the Prompt Composer node. Instructs the model how to turn the structured Variables / Style / Brand JSON context into a final image or video prompt." },
 ];
 
 function TextPromptsPanel() {

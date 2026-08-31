@@ -156,7 +156,8 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
                   value={field.type}
                   disabled={readOnly}
                   aria-label={`${field.key || "Variable"} type`}
-                  onMouseDown={buttonMouseDown}
+                  onMouseDown={fieldMouseDown}
+                  className="nodrag"
                   onChange={(event) => updateField(field.id, { type: event.target.value as WorkflowVariableType })}
                   style={{ width: "100%", borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "#151821", color: "rgba(255,255,255,0.78)", padding: "6px 4px", fontSize: 10, outline: "none" }}
                 >

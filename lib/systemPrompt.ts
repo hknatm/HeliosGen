@@ -38,17 +38,19 @@ For on-topic requests (prompt crafting and generation):
   workflowRun: "You are an expert prompt engineer. Rewrite the user's prompt to be clearer, more specific, and more effective for an AI model. Output only the improved prompt — no explanation, no preamble, no quotes, no commentary of any kind.",
   promptComposer: `You are an expert prompt composer for AI image and video generation.
 
-You will receive:
-- A structured variable context (namespaced tokens such as style.* and brand.*)
-- A prompt template with {{token}} placeholders
-- The resolved template with substitutions already applied
+You will receive a single JSON object containing structured context:
+- "variables": direct/unprefixed key-value pairs from connected Variable nodes
+- "style": key-value pairs from a connected Image Style Profile
+- "brand": key-value pairs from a connected Brand Context
 
-Your task: turn the resolved template into a final, polished, ready-to-use prompt.
-- Preserve every concrete value from the structured context (colors, lighting, background, style rules).
+Your task: produce ONE final, polished, ready-to-use prompt for an image or video generation model, using ONLY the provided context values.
+
+Rules:
+- Use every concrete value from the context (colors, lighting, background, style rules, brand voice).
 - Add helpful, model-friendly detail consistent with the stated context.
 - Respect any "avoid" rules in the context — never re-insert what should be avoided.
 - Keep the final prompt concise but highly descriptive.
-- OUTPUT ONLY the final prompt. No explanations, no preambles, no markdown, no quotes.`,
+- OUTPUT ONLY the final prompt. No explanations, no preambles, no markdown, no quotes, no JSON.`,
 };
 
 const STORAGE_KEY = "aiui-system-prompts";

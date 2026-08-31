@@ -21,7 +21,7 @@ import { useWorkflowStore, NodeData } from "@/lib/store";
 import { VIDEO_MODELS } from "@/lib/modelConfig";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 import { topoSort, resolveInputs } from "@/lib/executor";
-import { resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
+import { buildComposerContext, resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
 import { defaultStyleProfileJson } from "@/lib/profileNodes";
 import { NODE_SIZE, FALLBACK_SIZE, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { edgeStyle } from "@/lib/edgeStyles";
@@ -1166,35 +1166,28 @@ export default function WorkflowCanvas() {
       if (!node) continue;
 
       // ── Prompt Composer ────────────────────────────────────────────────────
-      // Resolve structured Variables + Brand/Style context deterministically.
-      // In AI mode, compose through /api/assistant BEFORE downstream generators
+      // AI-only: compose through /api/assistant BEFORE downstream generators
       // consume this node's prompt, so image/video nodes read the AI result.
+      // The prompt body is the deterministic structured JSON context alone.
       if (node.type === "promptComposerNode") {
         const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
         const comp = resolveComposerTemplate(nodeId, fresh, edges);
-        const isAi = node.data.composerMode === "ai";
-
-        if (!isAi) {
-          if (node.data.resolvedPrompt !== comp.resolved || node.data.prompt !== comp.resolved) {
-            updateNodeData(nodeId, { resolvedPrompt: comp.resolved, prompt: comp.resolved });
-          }
-          push(`[${node.id}] resolved template (deterministic)`);
-          continue;
-        }
 
         if (debugMode) {
-          console.log(`[DEBUG] composerNode=${node.id}`, { template: comp.template, model: node.data.composerModel });
+          console.log(`[DEBUG] composerNode=${node.id}`, { model: node.data.composerModel });
           push(`[DEBUG] ${node.id} — logged to console`);
           continue;
         }
 
-        if (!comp.resolved.trim()) {
-          push(`[${node.id}] skipped — resolved prompt is empty`, false);
+        const composerContext = buildComposerContext(comp.connectedValues);
+        if (!Object.values(composerContext).some((section) => Object.keys(section).length > 0)) {
+          updateNodeData(nodeId, { status: "error", errorMsg: "No valid connected context to compose.", resolvedPrompt: "", prompt: "" });
+          push(`[${node.id}] skipped — no valid connected context`, false);
           continue;
         }
 
         push(`[${node.id}] composing with AI…`);
-        updateNodeData(nodeId, { status: "running", errorMsg: undefined });
+        updateNodeData(nodeId, { status: "running", errorMsg: undefined, resolvedPrompt: "", prompt: "" });
 
         try {
           const model = (node.data.composerModel as string | undefined) ?? "claude-sonnet-4-6";
@@ -1203,7 +1196,7 @@ export default function WorkflowCanvas() {
             method: "POST",
             headers: authHeaders(token),
             body: JSON.stringify({
-              prompt: buildComposerPrompt(comp.connectedValues, comp.resolved, comp.template),
+              prompt: buildComposerPrompt(comp.connectedValues),
               model,
               systemPrompt: getSystemPrompt("promptComposer"),
               ...(customProvider ? { customProvider } : {}),
@@ -1244,9 +1237,10 @@ export default function WorkflowCanvas() {
           push(`[${node.id}] done`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
-          // Deterministic fallback: never block downstream image/video on an AI failure.
-          updateNodeData(nodeId, { status: "error", errorMsg: msg, resolvedPrompt: comp.resolved, prompt: comp.resolved });
-          push(`[${node.id}] error: ${msg} — used deterministic template`, false);
+          // AI failure: clear the final prompt so downstream generators skip
+          // (they never consume an older resolvedPrompt or raw JSON).
+          updateNodeData(nodeId, { status: "error", errorMsg: msg, resolvedPrompt: "", prompt: "" });
+          push(`[${node.id}] error: ${msg} — downstream skipped (no prompt)`, false);
         }
       }
 

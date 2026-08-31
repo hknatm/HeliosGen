@@ -5,7 +5,7 @@ import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import { NodeData, useWorkflowStore } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
-import { buildComposerPrompt, resolveComposerTemplate } from "@/lib/composerSources";
+import { buildComposerContext, buildComposerPrompt, resolveComposerConnections } from "@/lib/composerSources";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 import { getSystemPrompt } from "@/lib/systemPrompt";
 import { createClient } from "@/lib/supabase/client";
@@ -13,12 +13,23 @@ import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation
 
 type PromptComposerNodeType = Node<NodeData, "promptComposerNode">;
 
-type ComposerMode = "template" | "ai";
-
 const MODELS = [
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
+
+const NAMESPACE_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  variables: { label: "VARIABLES", color: "#ddd6fe", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.24)" },
+  style:     { label: "STYLE",     color: "#7dd3fc", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.24)" },
+  brand:     { label: "BRAND",     color: "#5eead4", bg: "rgba(45,212,191,0.12)", border: "rgba(45,212,191,0.24)" },
+};
+
+/** Truncate a value safely for display without ever showing raw JSON blobs. */
+function truncateValue(value: string, max = 40): string {
+  const flat = value.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  return `${flat.slice(0, max - 1)}…`;
+}
 
 export default function PromptComposerNode({ id, data, selected }: NodeProps<PromptComposerNodeType>) {
   const readOnly = useReadOnly();
@@ -27,12 +38,10 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
   const nodes = useWorkflowStore((state) => state.nodes);
   const edges = useWorkflowStore((state) => state.edges);
   const cardRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelBarRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const requestSeqRef = useRef(0);
 
-  const template = (data.template ?? data.prompt ?? "") as string;
-  const mode: ComposerMode = data.composerMode === "ai" ? "ai" : "template";
   const model = (data.composerModel as string | undefined) ?? "claude-sonnet-4-6";
 
   const [aiBusy, setAiBusy] = useState(false);
@@ -53,21 +62,22 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
     ...customModels.filter((m) => m.enabled !== false).map((item) => ({ id: customModelId(item.id), label: item.name })),
   ];
 
-  // ── Shared source/token resolution (same helper the canvas Run All uses) ──
-  const { connectedValues, resolved, missingKeys, duplicateKeys } = useMemo(
-    () => resolveComposerTemplate(id, nodes, edges),
+  // Connected structured context (Variables / Style / Brand) — the only source
+  // data the Composer sends to the model.
+  const connectedValues = useMemo(
+    () => resolveComposerConnections(id, nodes, edges),
     [edges, id, nodes],
   );
 
-  // Mode-aware deterministic resolution. In template mode we always mirror the
-  // deterministic template into resolvedPrompt/prompt (the downstream contract).
-  // In AI mode we must NOT auto-resolve over an existing AI result.
-  useEffect(() => {
-    if (mode === "ai") return;
-    if (data.resolvedPrompt !== resolved || data.prompt !== resolved) {
-      updateNodeData(id, { resolvedPrompt: resolved, prompt: resolved });
-    }
-  }, [data.prompt, data.resolvedPrompt, id, mode, resolved, updateNodeData]);
+  // Show only valid, non-empty, unambiguous key/value pairs — exactly the
+  // structured context that will be sent to the model.
+  const composerContext = useMemo(() => buildComposerContext(connectedValues), [connectedValues]);
+  const connectedKeys = useMemo(() => (
+    (["variables", "style", "brand"] as const).flatMap((namespace) =>
+      Object.entries(composerContext[namespace]).map(([key, value]) => ({ namespace, key, value })),
+    )
+  ), [composerContext]);
+  const hasComposerContext = connectedKeys.length > 0;
 
   useEffect(() => {
     if (!selected || !cardRef.current) return;
@@ -91,34 +101,42 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
     return () => document.removeEventListener("mousedown", handler);
   }, [modelOpen]);
 
-  // Keep mode / model in sync with the store as they change
-  const setMode = useCallback((next: ComposerMode) => {
-    updateNodeData(id, { composerMode: next });
-  }, [id, updateNodeData]);
-
-  const insertToken = useCallback((key: string, dropOffset?: number) => {
-    if (readOnly) return;
-    const textarea = textareaRef.current;
-    const start = dropOffset ?? textarea?.selectionStart ?? template.length;
-    const end = dropOffset ?? textarea?.selectionEnd ?? start;
-    const token = `{{${key}}}`;
-    const next = `${template.slice(0, start)}${token}${template.slice(end)}`;
-    updateNodeData(id, { template: next });
-    requestAnimationFrame(() => {
-      textarea?.focus();
-      const cursor = start + token.length;
-      textarea?.setSelectionRange(cursor, cursor);
-    });
-  }, [id, readOnly, template, updateNodeData]);
+  // Internal scroll (connected-keys list + final-prompt output) must not pan the
+  // canvas. Mirror VariableNode/ProfileDataNode: stop wheel propagation only when
+  // the wheel target sits inside a scrollable region that can actually scroll.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return;
+      let el = event.target as HTMLElement | null;
+      while (el && el !== card) {
+        const style = getComputedStyle(el);
+        if (
+          (style.overflowY === "auto" || style.overflowY === "scroll") &&
+          el.scrollHeight > el.clientHeight
+        ) {
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          return;
+        }
+        el = el.parentElement;
+      }
+    };
+    card.addEventListener("wheel", onWheel, { passive: true });
+    return () => card.removeEventListener("wheel", onWheel);
+  }, []);
 
   const handleProcessAI = useCallback(async () => {
-    if (busy || readOnly) return;
+    if (busy || readOnly || !hasComposerContext) return;
+    const seq = ++requestSeqRef.current;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     setAiBusy(true);
-    updateNodeData(id, { status: "running", errorMsg: undefined });
+    // Clear any previous result up front so a stale/older output can never leak.
+    updateNodeData(id, { status: "running", errorMsg: undefined, resolvedPrompt: "", prompt: "" });
 
     try {
       const { data: { session } } = await createClient().auth.getSession();
@@ -129,7 +147,7 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
         method: "POST",
         headers,
         body: JSON.stringify({
-          prompt: buildComposerPrompt(connectedValues, resolved, template),
+          prompt: buildComposerPrompt(connectedValues),
           model,
           systemPrompt: getSystemPrompt("promptComposer"),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
@@ -167,45 +185,46 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
               "";
             if (delta) {
               accumulated += delta;
-              updateNodeData(id, { resolvedPrompt: accumulated, prompt: accumulated });
+              // Only the newest request may write output.
+              if (requestSeqRef.current === seq) updateNodeData(id, { resolvedPrompt: accumulated, prompt: accumulated });
             }
           } catch { /* skip malformed SSE lines */ }
         }
       }
 
-      updateNodeData(id, { status: "done", resolvedPrompt: accumulated, prompt: accumulated });
+      if (requestSeqRef.current === seq) {
+        updateNodeData(id, { status: "done", resolvedPrompt: accumulated, prompt: accumulated });
+      }
     } catch (e: unknown) {
-      // Deterministic fallback: keep the resolved template so downstream never breaks.
-      updateNodeData(id, {
-        status: "error",
-        errorMsg: e instanceof Error ? e.message : String(e),
-        resolvedPrompt: resolved,
-        prompt: resolved,
-      });
+      // AI failure: never send raw JSON or stale/garbled template downstream.
+      // Clear the final prompt so downstream generators skip because prompt is empty.
+      if (requestSeqRef.current === seq) {
+        updateNodeData(id, {
+          status: "error",
+          errorMsg: e instanceof Error ? e.message : String(e),
+          resolvedPrompt: "",
+          prompt: "",
+        });
+      }
     } finally {
-      setAiBusy(false);
-      abortRef.current = null;
+      if (requestSeqRef.current === seq) {
+        setAiBusy(false);
+        abortRef.current = null;
+      }
     }
-  }, [busy, connectedValues, id, model, readOnly, resolved, template, updateNodeData]);
+  }, [busy, connectedValues, hasComposerContext, id, model, readOnly, updateNodeData]);
 
   const handleCancel = useCallback(() => {
+    // Bump the sequence so the aborted stream cannot write a final output.
+    requestSeqRef.current += 1;
     abortRef.current?.abort();
     setAiBusy(false);
-    updateNodeData(id, { status: "idle" });
+    updateNodeData(id, { status: "idle", errorMsg: undefined });
   }, [id, updateNodeData]);
 
-  const chipKeys = [...new Set(connectedValues.map((variable) => variable.key))].sort();
-  const displayedPrompt = mode === "ai"
-    ? ((data.resolvedPrompt as string | undefined) ?? resolved)
-    : resolved;
-  const missingMessage = duplicateKeys.length
-    ? `DUPLICATE KEYS: ${duplicateKeys.join(", ")}`
-    : missingKeys.length ? `MISSING: ${missingKeys.join(", ")}` : null;
+  const displayedPrompt = (data.resolvedPrompt as string | undefined) ?? "";
+  const errorMsg = data.errorMsg as string | undefined;
 
-  // Stick-to-cursor guards
-  const fieldMouseDown = useCallback((e: React.MouseEvent) => {
-    if (selected) e.stopPropagation(); else e.preventDefault();
-  }, [selected]);
   const buttonMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
@@ -218,135 +237,109 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: 600 }}>Prompt Composer</div>
-            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Drag a connected key into your template</div>
+            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>AI composes from connected context</div>
           </div>
 
-          {/* Mode + model controls */}
+          {/* Model selector */}
           <div ref={modelBarRef} style={{ display: "flex", alignItems: "center", gap: 6 }} onMouseDown={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", padding: 2, borderRadius: 6, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <button
                 type="button"
-                disabled={readOnly}
+                disabled={busy}
                 onMouseDown={buttonMouseDown}
-                onClick={(e) => { e.stopPropagation(); setMode("template"); }}
-                style={{ padding: "3px 7px", borderRadius: 4, border: "none", cursor: readOnly ? "default" : "pointer", fontSize: 10, fontWeight: 600, background: mode === "template" ? "rgba(255,255,255,0.14)" : "transparent", color: mode === "template" ? "#fff" : "rgba(255,255,255,0.4)" }}
-              >Template</button>
-              <button
-                type="button"
-                disabled={readOnly}
-                onMouseDown={buttonMouseDown}
-                onClick={(e) => { e.stopPropagation(); setMode("ai"); }}
-                style={{ padding: "3px 7px", borderRadius: 4, border: "none", cursor: readOnly ? "default" : "pointer", fontSize: 10, fontWeight: 600, background: mode === "ai" ? "rgba(244,114,182,0.22)" : "transparent", color: mode === "ai" ? "#f9a8d4" : "rgba(255,255,255,0.4)" }}
-              >AI</button>
+                onClick={(e) => { e.stopPropagation(); if (!busy) setModelOpen((o) => !o); }}
+                style={{ display: "flex", alignItems: "center", gap: 3, border: "1px solid rgba(244,114,182,0.24)", background: "rgba(244,114,182,0.12)", color: "#f9a8d4", padding: "3px 7px", borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: busy ? "default" : "pointer" }}
+              >
+                {modelOptions.find((m) => m.id === model)?.label ?? model}
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ transform: modelOpen ? "rotate(180deg)" : undefined }}>
+                  <path d="M1 2.5 4 5.5 7 2.5" />
+                </svg>
+              </button>
+              {modelOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "170px", background: "#111622", border: "1px solid #1E2840", borderRadius: "8px", overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,0.6)", zIndex: 1001 }}>
+                  {modelOptions.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onMouseDown={buttonMouseDown}
+                      onClick={(e) => { e.stopPropagation(); updateNodeData(id, { composerModel: m.id }); setModelOpen(false); }}
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: "none", background: "transparent", fontSize: 11, color: model === m.id ? "#fff" : "rgba(255,255,255,0.6)", cursor: "pointer" }}
+                    >{m.label}</button>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
+        </div>
 
-            {mode === "ai" && (
-              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onMouseDown={buttonMouseDown}
-                  onClick={(e) => { e.stopPropagation(); if (!busy) setModelOpen((o) => !o); }}
-                  style={{ display: "flex", alignItems: "center", gap: 3, border: "1px solid rgba(244,114,182,0.24)", background: "rgba(244,114,182,0.12)", color: "#f9a8d4", padding: "3px 7px", borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: busy ? "default" : "pointer" }}
-                >
-                  {modelOptions.find((m) => m.id === model)?.label ?? model}
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ transform: modelOpen ? "rotate(180deg)" : undefined }}>
-                    <path d="M1 2.5 4 5.5 7 2.5" />
-                  </svg>
-                </button>
-                {modelOpen && (
-                  <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "170px", background: "#111622", border: "1px solid #1E2840", borderRadius: "8px", overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,0.6)", zIndex: 1001 }}>
-                    {modelOptions.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onMouseDown={buttonMouseDown}
-                        onClick={(e) => { e.stopPropagation(); updateNodeData(id, { composerModel: m.id }); setModelOpen(false); }}
-                        style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: "none", background: "transparent", fontSize: 11, color: model === m.id ? "#fff" : "rgba(255,255,255,0.6)", cursor: "pointer" }}
-                      >{m.label}</button>
-                    ))}
+        {/* Connected Keys view */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minHeight: 0 }}>
+          <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em" }}>CONNECTED KEYS</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, overflow: "auto", minHeight: 0 }} aria-label="Connected keys">
+            {connectedKeys.length ? (
+              (["variables", "style", "brand"] as const).map((ns) => {
+                const group = connectedKeys.filter((k) => k.namespace === ns);
+                if (!group.length) return null;
+                const meta = NAMESPACE_META[ns];
+                return (
+                  <div key={ns} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, fontWeight: 700, letterSpacing: "0.08em" }}>{meta.label}</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {group.map((k) => (
+                        <span
+                          key={`${k.namespace}.${k.key}`}
+                          title={`${k.namespace}.${k.key} = ${k.value}`}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 4, color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`, padding: "2px 6px", borderRadius: 4, fontSize: 10, fontFamily: "monospace", maxWidth: "100%" }}
+                        >
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.key}</span>
+                          <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>·</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(255,255,255,0.6)", maxWidth: 90 }}>{truncateValue(k.value)}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })
+            ) : (
+              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>Connect a Variables, Brand Context, or Image Style Profile node to add context.</span>
             )}
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em" }}>AVAILABLE KEYS</span>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, minHeight: 24 }} aria-label="Connected variable keys">
-            {chipKeys.length ? chipKeys.map((key) => (
-              <button
-                key={key}
-                type="button"
-                draggable={!readOnly}
-                title={`Click or drag ${key} into the template`}
-                onMouseDown={buttonMouseDown}
-                onClick={() => insertToken(key)}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = "copy";
-                  event.dataTransfer.setData("text/plain", key);
-                }}
-                style={{ color: "#ddd6fe", background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.24)", padding: "3px 7px", borderRadius: 4, fontSize: 10, fontFamily: "monospace", cursor: readOnly ? "default" : "grab" }}
-              >{key}</button>
-            )) : <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>Connect a Variables, Brand Context, or Image Style Profile node to add keys.</span>}
-          </div>
+        {/* Process / status */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 7, background: "rgba(244,114,182,0.06)", border: "1px solid rgba(244,114,182,0.2)" }}>
+          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, flex: 1, lineHeight: 1.4 }}>
+            {busy ? "Composing…" : "Compose a final prompt from connected context."}
+          </span>
+          {!readOnly && (busy ? (
+            <button
+              type="button"
+              onMouseDown={buttonMouseDown}
+              onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+              style={{ border: "1px solid #333", color: "#888", background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}
+            >Stop</button>
+          ) : (
+            <button
+              id={`composer-process-ai-${id}`}
+              type="button"
+              disabled={!hasComposerContext}
+              onMouseDown={buttonMouseDown}
+              onClick={(e) => { e.stopPropagation(); handleProcessAI(); }}
+              style={{ border: "1px solid rgba(244,114,182,0.4)", background: "rgba(244,114,182,0.18)", color: "#f9a8d4", borderRadius: 6, padding: "4px 9px", fontSize: 10, fontWeight: 600, cursor: hasComposerContext ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}
+            >Process with AI</button>
+          ))}
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minHeight: 0 }}>
-          <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em" }}>TEMPLATE</span>
-          <textarea
-            ref={textareaRef}
-            value={template}
-            disabled={readOnly}
-            aria-label="Prompt template"
-            placeholder="Studio product photo of …"
-            onMouseDown={fieldMouseDown}
-            className="nodrag"
-            onChange={(event) => updateNodeData(id, { template: event.target.value })}
-            onDragOver={(event) => { if (!readOnly) event.preventDefault(); }}
-            onDrop={(event) => {
-              event.preventDefault();
-              const key = event.dataTransfer.getData("text/plain");
-              if (!chipKeys.includes(key)) return;
-              const target = event.currentTarget;
-              target.focus();
-              insertToken(key, target.selectionStart ?? template.length);
-            }}
-            style={{ width: "100%", minHeight: 74, flex: 1, resize: "none", boxSizing: "border-box", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.9)", padding: "8px 9px", fontFamily: "inherit", fontSize: 12, lineHeight: 1.5, outline: "none" }}
-          />
-        </label>
-
-        {mode === "ai" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 7, background: "rgba(244,114,182,0.06)", border: "1px solid rgba(244,114,182,0.2)" }}>
-            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, flex: 1, lineHeight: 1.4 }}>
-              {busy ? "AI composing…" : "AI mode uses your resolved context + template."}
-            </span>
-            {!readOnly && (busy ? (
-              <button
-                type="button"
-                onMouseDown={buttonMouseDown}
-                onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                style={{ border: "1px solid #333", color: "#888", background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}
-              >Stop</button>
-            ) : (
-              <button
-                id={`composer-process-ai-${id}`}
-                type="button"
-                disabled={!resolved.trim()}
-                onMouseDown={buttonMouseDown}
-                onClick={(e) => { e.stopPropagation(); handleProcessAI(); }}
-                style={{ border: "1px solid rgba(244,114,182,0.4)", background: "rgba(244,114,182,0.18)", color: "#f9a8d4", borderRadius: 6, padding: "4px 9px", fontSize: 10, fontWeight: 600, cursor: resolved.trim() ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}
-              >Process with AI</button>
-            ))}
+        {/* Output panel */}
+        <div style={{ borderRadius: 7, padding: "8px 9px", background: "rgba(255,255,255,0.035)", border: `1px solid ${busy ? "rgba(244,114,182,0.4)" : errorMsg ? "rgba(248,113,113,0.4)" : "rgba(255,255,255,0.08)"}` }}>
+          <div style={{ color: busy ? "#f9a8d4" : errorMsg ? "#f87171" : "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", marginBottom: 4 }}>
+            {busy ? "COMPOSING…" : errorMsg ? "COMPOSE FAILED" : "FINAL PROMPT"}
           </div>
-        )}
-
-        <div style={{ borderRadius: 7, padding: "8px 9px", background: "rgba(255,255,255,0.035)", border: `1px solid ${busy ? "rgba(244,114,182,0.4)" : missingMessage ? "rgba(251,191,36,0.35)" : "rgba(255,255,255,0.08)"}` }}>
-          <div style={{ color: busy ? "#f9a8d4" : missingMessage ? "#fcd34d" : "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", marginBottom: 4 }}>{busy ? "COMPOSING…" : missingMessage ?? (mode === "ai" ? "AI PROMPT OUTPUT" : "RESOLVED PROMPT")}</div>
-          <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 11, lineHeight: 1.45, whiteSpace: "pre-wrap", maxHeight: 68, overflow: "auto" }}>{displayedPrompt || "Your resolved prompt will appear here."}</div>
-          {data.status === "error" && (data.errorMsg as string) && (
-            <div style={{ marginTop: 4, color: "#f87171", fontSize: 10 }}>{(data.errorMsg as string)?.slice(0, 120)} — kept deterministic result.</div>
+          <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 11, lineHeight: 1.45, whiteSpace: "pre-wrap", maxHeight: 68, overflow: "auto" }}>
+            {displayedPrompt || (errorMsg ? "No prompt was produced. Downstream nodes will be skipped." : "Your composed prompt will appear here.")}
+          </div>
+          {errorMsg && (
+            <div style={{ marginTop: 4, color: "#f87171", fontSize: 10 }}>{errorMsg.slice(0, 120)}</div>
           )}
         </div>
       </div>

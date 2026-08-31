@@ -1,6 +1,6 @@
 /**
  * Focused tests for the unified Style Profile JSON helpers and the shared
- * Prompt Composer source/token resolution.
+ * Prompt Composer source resolution (AI-only, JSON-only payload).
  *
  *   npx tsc -p scripts/tsconfig.test.json
  *   node scripts/.test-dist/scripts/test-composer.js
@@ -13,6 +13,7 @@ import {
   profileJsonToFields,
 } from "../lib/profileNodes";
 import {
+  buildComposerContext,
   buildComposerPrompt,
   resolveComposerConnections,
   resolveComposerTemplate,
@@ -76,31 +77,86 @@ const edges = [edge("e1", "style-1", "composer-1", "variables")];
 
 const resolution = resolveComposerTemplate("composer-1", nodes, edges);
 assert(resolution.connectedValues.every((v) => v.key.startsWith("style.")), "profile JSON tokens are namespaced style.*");
-const styleResolved = resolveComposerTemplate("composer-1", nodes, edges);
-assert(!/{{/.test(styleResolved.resolved), "deterministic resolution removes all placeholders");
-assert(styleResolved.resolved.includes("Product hero shot"), "style.shot_type substituted");
-assert(styleResolved.resolved.includes("Clean studio sweep"), "style.background substituted");
-assert(styleResolved.missingKeys.length === 0 && styleResolved.duplicateKeys.length === 0,
-  "no missing/duplicate keys for valid style JSON");
 
-console.log("── Malformed JSON safety ───────────────────────────────────");
+console.log("── JSON-only payload shape ─────────────────────────────────");
 
+const context = buildComposerContext(resolution.connectedValues);
+assert(typeof context === "object" && !Array.isArray(context), "context is a plain object");
+assert(!!context.variables && !!context.style && !!context.brand, "context has variables/style/brand sections");
+assert(Object.keys(context.style).length > 0, "style keys land under the style section");
+assert(Object.keys(context.variables).length === 0 && Object.keys(context.brand).length === 0,
+  "style-only sources do not leak into variables/brand");
+
+const prompt = buildComposerPrompt(resolution.connectedValues);
+let promptParsed: unknown;
+try { promptParsed = JSON.parse(prompt); } catch { promptParsed = null; }
+assert(!!promptParsed && typeof promptParsed === "object" && !Array.isArray(promptParsed),
+  "prompt body is valid JSON text alone");
+assert(!/Resolve the prompt template/i.test(prompt) && !/Template:/i.test(prompt) && !/Output only/i.test(prompt),
+  "prompt body has no surrounding English instructions");
+assert(prompt.includes('"shot_type"') && prompt.includes("Product hero shot"),
+  "prompt body carries namespaced style values");
+
+console.log("── Namespaced structural context ──────────────────────────");
+
+const brandNode = node("brand-1", "brandProfileNode", { variables: [{ id: "b1", key: "primary_color", value: "#2F6B5F", type: "color" }] });
+const varNode = node("var-1", "variableNode", { variables: [{ id: "v1", key: "subject", value: "ceramic vase", type: "text" }] });
+const mixedComposer = node("composer-mixed", "promptComposerNode", {});
+const mixedNodes = [styleNode, brandNode, varNode, mixedComposer];
+const mixedEdges = [
+  edge("e1", "style-1", "composer-mixed", "variables"),
+  edge("e2", "brand-1", "composer-mixed", "variables"),
+  edge("e3", "var-1", "composer-mixed", "variables"),
+];
+const mixedConns = resolveComposerConnections("composer-mixed", mixedNodes, mixedEdges);
+const mixedCtx = buildComposerContext(mixedConns);
+assert(Object.keys(mixedCtx.variables).includes("subject") && mixedCtx.variables.subject === "ceramic vase",
+  "variable values are direct/unprefixed under variables");
+assert(Object.keys(mixedCtx.style).includes("shot_type"), "style keys under style");
+assert(Object.keys(mixedCtx.brand).includes("primary_color") && mixedCtx.brand.primary_color === "#2F6B5F",
+  "brand keys under brand");
+
+console.log("── Duplicate / malformed rejection ─────────────────────────");
+
+// Duplicate key across two sources must be excluded entirely (no silent overwrite).
+const dupA = node("dup-a", "variableNode", { variables: [{ id: "a1", key: "subject", value: "first", type: "text" }] });
+const dupB = node("dup-b", "variableNode", { variables: [{ id: "b1", key: "subject", value: "second", type: "text" }] });
+const dupComposer = node("composer-dup", "promptComposerNode", {});
+const dupConns = resolveComposerConnections("composer-dup", [dupA, dupB, dupComposer], [
+  edge("da", "dup-a", "composer-dup", "variables"),
+  edge("db", "dup-b", "composer-dup", "variables"),
+]);
+const dupCtx = buildComposerContext(dupConns);
+assert(!("subject" in dupCtx.variables), "duplicate key is excluded entirely (no silent overwrite)");
+
+// Empty/missing values are excluded.
+const emptyNode = node("empty-1", "variableNode", { variables: [{ id: "e1", key: "empty_key", value: "   ", type: "text" }] });
+const emptyComposer = node("composer-empty", "promptComposerNode", {});
+const emptyCtx = buildComposerContext(resolveComposerConnections("composer-empty", [emptyNode, emptyComposer], [
+  edge("ee", "empty-1", "composer-empty", "variables"),
+]));
+assert(!("empty_key" in emptyCtx.variables), "empty/missing value is excluded");
+
+// Malformed profile JSON contributes no tokens (no crash).
 const badStyle = node("style-bad", "styleProfileNode", { profileJson: "{ broken" });
 const composerBad = node("composer-bad", "promptComposerNode", { template: "{{style.lighting}}" });
 const badRes = resolveComposerTemplate("composer-bad", [badStyle, composerBad], [edge("eb", "style-bad", "composer-bad", "variables")]);
 assert(badRes.connectedValues.length === 0, "malformed profile JSON contributes no tokens (no crash)");
-assert((badRes.missingKeys as string[]).includes("style.lighting"), "missing style token still reported safely");
+const badCtx = buildComposerContext(badRes.connectedValues);
+assert(Object.keys(badCtx.style).length === 0 && Object.keys(badCtx.variables).length === 0,
+  "malformed profile yields empty context");
 
-const conns = resolveComposerConnections("composer-bad", [badStyle], []);
-assert(conns.length === 0, "resolveComposerConnections safe with malformed profile");
+console.log("── No template dependency ──────────────────────────────────");
 
-console.log("── Composer context build ──────────────────────────────────");
-
-const contextPrompt = buildComposerPrompt(styleResolved.connectedValues, styleResolved.resolved, "{{style.shot_type}} template");
-assert(contextPrompt.includes("style.shot_type"), "context includes namespaced key");
-assert(contextPrompt.includes("Product hero shot"), "context includes resolved value");
-assert(contextPrompt.includes("OUTPUT ONLY") || /output only the final prompt/i.test(contextPrompt),
-  "prompt instructs final-only output");
+// The AI-only Composer must not depend on a template: a composer with no
+// template still produces a valid JSON-only prompt from connected context.
+const noTemplateComposer = node("composer-nt", "promptComposerNode", {});
+const ntConns = resolveComposerConnections("composer-nt", [styleNode, noTemplateComposer], [edge("nt", "style-1", "composer-nt", "variables")]);
+const ntPrompt = buildComposerPrompt(ntConns);
+let ntParsed: unknown;
+try { ntParsed = JSON.parse(ntPrompt); } catch { ntParsed = null; }
+assert(!!ntParsed && typeof ntParsed === "object", "prompt builds from context alone with no template");
+assert(!/{{/.test(ntPrompt), "no unresolved template tokens in the prompt body");
 
 console.log("── VariableNode / legacy compatibility ────────────────────");
 
@@ -108,6 +164,8 @@ const legacyBrand = node("brand-1", "brandProfileNode", { variables: [{ id: "b1"
 const legacyComposer = node("composer-legacy", "promptComposerNode", { template: "brand color {{brand.primary_color}}" });
 const legacyRes = resolveComposerTemplate("composer-legacy", [legacyBrand, legacyComposer], [edge("eb2", "brand-1", "composer-legacy", "variables")]);
 assert(legacyRes.resolved.includes("#2F6B5F"), "legacy brand.* fields still resolve for saved spaces");
+const legacyCtx = buildComposerContext(legacyRes.connectedValues);
+assert(legacyCtx.brand.primary_color === "#2F6B5F", "legacy brand context still namespaced under brand");
 
 if (failures) process.exit(1);
 console.log("\nAll composer tests passed.");
