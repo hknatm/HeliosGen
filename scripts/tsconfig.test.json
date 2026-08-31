@@ -15,10 +15,16 @@
     "../lib/workflowVariables.ts",
     "../lib/profileNodes.ts",
     "../lib/styleComposition.ts",
+    "../lib/textFonts.ts",
+    "../lib/textRenderingSettings.ts",
+    "../lib/textRendererSources.ts",
     "../lib/composerSources.ts",
+    "../lib/copyComposer.ts",
     "../lib/store.ts",
     "test-local-db.ts",
     "test-workflow-variables.ts",
-    "test-composer.ts"
+    "test-composer.ts",
+    "test-text-renderer.ts",
+    "test-copy-composer.ts"
   ]
 }

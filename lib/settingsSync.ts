@@ -26,6 +26,8 @@ const LOCAL_STORAGE_KEYS: Record<string, string> = {
   customProviderModels: "aiui-custom-provider-models",
   systemPrompts: "aiui-system-prompts",
   modelProviders: "aiui-model-providers",
+  textFonts: "aiui-text-fonts",
+  textRenderingSettings: "aiui-text-rendering-settings",
 };
 
 function readLocal(key: string): unknown {
@@ -48,6 +50,8 @@ function writeLocal(key: string, value: unknown) {
       customProviderModels: "aiui-custom-provider-models-changed",
       systemPrompts: "aiui-system-prompts-changed",
       modelProviders: "aiui-providers-changed",
+      textFonts: "aiui-text-fonts-changed",
+      textRenderingSettings: "aiui-text-rendering-settings-changed",
     };
     const event = eventByKey[key];
     if (event) window.dispatchEvent(new CustomEvent(event));
@@ -109,6 +113,16 @@ const SETTINGS: Record<string, SettingAccessor> = {
     read: () => readLocal("modelProviders"),
     write: (v) => writeLocal("modelProviders", v),
     isEmpty: (v) => !v || typeof v !== "object" || Object.keys(v as object).length === 0,
+  },
+  textFonts: {
+    read: () => readLocal("textFonts"),
+    write: (v) => writeLocal("textFonts", v),
+    isEmpty: (v) => !Array.isArray(v),
+  },
+  textRenderingSettings: {
+    read: () => readLocal("textRenderingSettings"),
+    write: (v) => writeLocal("textRenderingSettings", v),
+    isEmpty: (v) => !v || typeof v !== "object",
   },
   preferredTextModel: {
     read: readPreferredModel,
@@ -193,6 +207,8 @@ export function useSettingsSync() {
       ["aiui-custom-provider-models-changed", "customProviderModels"],
       ["aiui-system-prompts-changed", "systemPrompts"],
       ["aiui-providers-changed", "modelProviders"],
+      ["aiui-text-fonts-changed", "textFonts"],
+      ["aiui-text-rendering-settings-changed", "textRenderingSettings"],
     ];
     const handlers = eventMap.map(([evt, key]) => {
       const handler = () => { if (hydratedRef.current) pushSetting(key); };

@@ -24,7 +24,7 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     : nodes;
 
   const genNodeCount = scopedNodes.filter(
-    n => n.type === "generateNode" || n.type === "videoGeneratorNode"
+    n => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "textRendererNode"
   ).length;
 
   const run = useCallback(() => {
@@ -61,11 +61,14 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     const { waves, waveIdx, waveStarted } = pipeline;
     const currentWave = waves[waveIdx];
 
-    // Trigger the wave
+    // Trigger the wave. Image/video generators own `pendingGenerate`; the
+    // deterministic Text Renderer owns `pendingRender` and completes through
+    // its own client-side render action.
     if (!waveStarted) {
       waveEverActive.current = false;
       for (const id of currentWave) {
-        updateNodeData(id, { pendingGenerate: true });
+        const node = nodes.find((item) => item.id === id);
+        updateNodeData(id, node?.type === "textRendererNode" ? { pendingRender: true } : { pendingGenerate: true });
       }
       setPipeline(p => p ? { ...p, waveStarted: true } : null);
       return;
@@ -81,13 +84,21 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     });
     if (anyActive) waveEverActive.current = true;
 
-    // Don't check completion until the wave has actually started
-    if (!waveEverActive.current) return;
+    // A node can reject invalid inputs synchronously after consuming its pending
+    // flag. Treat that as a completed (failed) wave instead of waiting forever
+    // for a pending/running status that will never arrive.
+    if (!waveEverActive.current) {
+      const settledWithoutStart = currentWave.every(id => {
+        const node = nodes.find(n => n.id === id);
+        return !node || (!node.data.pendingGenerate && !node.data.pendingRender && node.data.status !== "pending" && node.data.status !== "running");
+      });
+      if (!settledWithoutStart) return;
+    }
 
     const allDone = currentWave.every(id => {
       const node = nodes.find(n => n.id === id);
       if (!node) return true;
-      return !node.data.pendingGenerate && node.data.status !== "pending" && node.data.status !== "running";
+      return !node.data.pendingGenerate && !node.data.pendingRender && node.data.status !== "pending" && node.data.status !== "running";
     });
 
     if (!allDone) return;
@@ -99,7 +110,8 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     } else {
       waveEverActive.current = false;
       for (const id of waves[nextIdx]) {
-        updateNodeData(id, { pendingGenerate: true, pipelineQueued: false });
+        const node = nodes.find((item) => item.id === id);
+        updateNodeData(id, node?.type === "textRendererNode" ? { pendingRender: true, pipelineQueued: false } : { pendingGenerate: true, pipelineQueued: false });
       }
       setPipeline({ waves, waveIdx: nextIdx, waveStarted: true });
     }

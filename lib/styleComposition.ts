@@ -115,6 +115,21 @@ export function readStyleComposition(profile: Record<string, unknown>): StyleCom
   };
 }
 
+/** Validate an already-resolved camelCase composition received by the renderer. */
+export function normalizeStyleComposition(value: unknown): StyleComposition {
+  if (!isObject(value)) return { ...DEFAULT_STYLE_COMPOSITION, copySpace: { ...DEFAULT_STYLE_COMPOSITION.copySpace }, copySpaceAvoid: [...DEFAULT_STYLE_COMPOSITION.copySpaceAvoid] };
+  if (!("copySpace" in value) && !("copySpacePreset" in value)) return readStyleComposition(value);
+  return readStyleComposition({
+    subject_anchor: value.subjectAnchor,
+    subject_scale: value.subjectScale,
+    copy_space_preset: value.copySpacePreset,
+    copy_space: value.copySpace,
+    copy_space_background: value.copySpaceBackground,
+    copy_space_contrast: value.copySpaceContrast,
+    copy_space_avoid: value.copySpaceAvoid,
+  });
+}
+
 /** Merge an edited composition into a Style Profile without touching other style fields. */
 export function writeStyleComposition(
   profile: Record<string, unknown>,

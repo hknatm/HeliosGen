@@ -33,6 +33,10 @@ function ext(contentType: string): string {
   if (contentType.includes("png"))  return "png";
   if (contentType.includes("gif"))  return "gif";
   if (contentType.includes("webp")) return "webp";
+  if (contentType.includes("woff2")) return "woff2";
+  if (contentType.includes("woff")) return "woff";
+  if (contentType.includes("otf")) return "otf";
+  if (contentType.includes("ttf")) return "ttf";
   return "jpg";
 }
 

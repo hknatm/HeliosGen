@@ -16,6 +16,8 @@ import {
   syncCustomProviderModels,
 } from "@/lib/customProvider";
 import { DEFAULT_SYSTEM_PROMPTS, loadSystemPrompts, saveSystemPrompts, resetSystemPrompts, type SystemPromptId } from "@/lib/systemPrompt";
+import { fontOptions, loadTextFonts, saveTextFonts, type TextFont } from "@/lib/textFonts";
+import { DEFAULT_TEXT_RENDERING_SETTINGS, loadTextRenderingSettings, normalizeTextRenderingSettings, saveTextRenderingSettings, type TextRenderingSettings } from "@/lib/textRenderingSettings";
 
 /* ─── Provider options (re-exported for backwards compat) ───────────────────── */
 
@@ -107,7 +109,7 @@ export function saveAzureTextModelName(name: string) {
 
 const IS_DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
-type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "text-prompts" | "debug";
+type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "text-prompts" | "text-rendering" | "debug";
 
 const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
   {
@@ -171,6 +173,16 @@ const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
         <path d="M4 6h16" />
         <path d="M4 12h10" />
         <path d="M4 18h13" />
+      </svg>
+    ),
+  },
+  {
+    id: "text-rendering",
+    label: "Text Rendering",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 5h16M8 5v14M16 5v14M5 19h14" />
+        <path d="m10 15 2-6 2 6M10.7 13h2.6" />
       </svg>
     ),
   },
@@ -1556,6 +1568,7 @@ const TEXT_PROMPT_SPECS: TextPromptSpec[] = [
   { id: "assistantNode", title: "Assistant Node", description: "Used by the Assistant node to rewrite a prompt into a clearer, more effective version." },
   { id: "workflowRun", title: "Workflow Run", description: "Used when rewriting a prompt during a workflow run." },
   { id: "promptComposer", title: "Prompt Composer", description: "Sole prompt-policy control for the Prompt Composer node. Instructs the model how to turn the structured Variables / Style / Brand JSON context into a final image or video prompt." },
+  { id: "copyComposer", title: "Copy Composer", description: "Sole prompt-policy control for the Copy Composer node. Instructs the model how to refine the exact authored Text Content (plus optional Variables / Brand Context) into strict structured copy JSON without inventing factual claims." },
 ];
 
 function TextPromptsPanel() {
@@ -1678,6 +1691,93 @@ function TextPromptsPanel() {
           {resetFlash ? "Reset" : "Reset to defaults"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ─── Text Rendering panel ─────────────────────────────────────────────────── */
+
+function TextRenderingPanel() {
+  const [settings, setSettings] = useState<TextRenderingSettings>(() => loadTextRenderingSettings());
+  const [fonts, setFonts] = useState<TextFont[]>(() => loadTextFonts());
+  const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const saveSettings = (patch: Partial<TextRenderingSettings>) => {
+    const next = normalizeTextRenderingSettings({ ...settings, ...patch });
+    setSettings(next);
+    saveTextRenderingSettings(next);
+  };
+
+  const uploadFont = async (file: File) => {
+    setUploading(true);
+    setNotice(null);
+    try {
+      const payload = new FormData();
+      payload.set("font", file);
+      const { data: { session } } = await createClient().auth.getSession();
+      const response = await fetch("/api/text-fonts", { method: "POST", headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined, body: payload });
+      const result = await response.json().catch(() => ({})) as { font?: TextFont; error?: string };
+      if (!response.ok || !result.font) throw new Error(result.error ?? "Font upload failed");
+      const next = [...fonts.filter((font) => font.id !== result.font!.id && font.family !== result.font!.family), result.font];
+      setFonts(next);
+      saveTextFonts(next);
+      setNotice(`Added ${result.font.family}. It is now available in Text Content nodes.`);
+    } catch (error: unknown) {
+      setNotice(error instanceof Error ? error.message : "Font upload failed");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <div>
+        <h2 style={{ fontSize: 17, fontWeight: 600, color: "rgba(255,255,255,0.9)", margin: 0 }}>Text Rendering</h2>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: "6px 0 0", lineHeight: 1.5 }}>Global defaults for deterministic image overlays. Individual Text Content nodes can override the font, colors, and alignment.</p>
+      </div>
+
+      <section style={{ padding: 16, border: "1px solid rgba(249,115,22,0.18)", background: "rgba(249,115,22,0.035)", borderRadius: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div><div style={{ color: "rgba(255,255,255,0.86)", fontSize: 13, fontWeight: 600 }}>Rendering defaults</div><div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, marginTop: 3 }}>Used by new Text Content nodes and the deterministic renderer.</div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>TITLE SIZE
+            <input type="number" min="24" max="240" value={settings.defaultTitleSize} onChange={(event) => saveSettings({ defaultTitleSize: Number(event.target.value) })} style={{ background: "rgba(0,0,0,0.18)", color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "7px 9px", outline: "none" }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>BODY SIZE
+            <input type="number" min="12" max="120" value={settings.defaultBodySize} onChange={(event) => saveSettings({ defaultBodySize: Number(event.target.value) })} style={{ background: "rgba(0,0,0,0.18)", color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "7px 9px", outline: "none" }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>DEFAULT TEXT
+            <input type="color" value={settings.defaultTextColor} aria-label="Default text color" onChange={(event) => saveSettings({ defaultTextColor: event.target.value.toUpperCase() })} style={{ width: "100%", height: 34, padding: 2, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.18)" }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>DEFAULT ACCENT
+            <input type="color" value={settings.defaultAccentColor} aria-label="Default accent color" onChange={(event) => saveSettings({ defaultAccentColor: event.target.value.toUpperCase() })} style={{ width: "100%", height: 34, padding: 2, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(0,0,0,0.18)" }} />
+          </label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>DEFAULT FONT
+            <select value={fontOptions(fonts).includes(settings.defaultFontFamily) ? settings.defaultFontFamily : "Arial"} onChange={(event) => saveSettings({ defaultFontFamily: event.target.value })} style={{ background: "rgba(0,0,0,0.18)", color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "7px 9px", outline: "none" }}>{fontOptions(fonts).map((family) => <option key={family} value={family}>{family}</option>)}</select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>ALIGNMENT
+            <select value={settings.defaultAlignment} onChange={(event) => saveSettings({ defaultAlignment: event.target.value as TextRenderingSettings["defaultAlignment"] })} style={{ background: "rgba(0,0,0,0.18)", color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "7px 9px", outline: "none" }}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5, color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>OUTPUT
+            <select value={settings.outputFormat} onChange={(event) => saveSettings({ outputFormat: event.target.value as TextRenderingSettings["outputFormat"] })} style={{ background: "rgba(0,0,0,0.18)", color: "rgba(255,255,255,0.85)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, padding: "7px 9px", outline: "none" }}><option value="png">PNG</option><option value="webp">WebP</option></select>
+          </label>
+        </div>
+        <button type="button" onClick={() => { setSettings({ ...DEFAULT_TEXT_RENDERING_SETTINGS }); saveTextRenderingSettings(DEFAULT_TEXT_RENDERING_SETTINGS); }} style={{ alignSelf: "flex-start", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 11 }}>Reset rendering defaults</button>
+      </section>
+
+      <section style={{ padding: 16, border: "1px solid rgba(56,189,248,0.18)", background: "rgba(56,189,248,0.035)", borderRadius: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div><div style={{ color: "rgba(255,255,255,0.86)", fontSize: 13, fontWeight: 600 }}>Uploaded fonts</div><div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, marginTop: 3, lineHeight: 1.45 }}>Upload licensed <code>.ttf</code>, <code>.otf</code>, <code>.woff</code>, or <code>.woff2</code> files (10 MB max). Fonts are stored with your app assets and can be selected by Text Content nodes.</div></div>
+        <input ref={inputRef} type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFont(file); }} />
+        <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} style={{ alignSelf: "flex-start", padding: "8px 12px", borderRadius: 7, border: "1px solid rgba(56,189,248,0.35)", background: "rgba(56,189,248,0.1)", color: "#7dd3fc", cursor: uploading ? "default" : "pointer", fontSize: 11, fontWeight: 600 }}>{uploading ? "Uploading…" : "Upload font"}</button>
+        {notice && <div role="status" aria-live="polite" style={{ fontSize: 11, lineHeight: 1.45, color: notice.startsWith("Added") ? "#86efac" : "#fca5a5" }}>{notice}</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {fonts.length ? fonts.map((font) => <div key={font.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 9px", borderRadius: 7, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}><div style={{ minWidth: 0 }}><div style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: font.family }}>{font.family}</div><div style={{ color: "rgba(255,255,255,0.35)", fontSize: 10, marginTop: 2 }}>{font.format.toUpperCase()} · uploaded</div></div><button type="button" onClick={() => { const next = fonts.filter((item) => item.id !== font.id); setFonts(next); saveTextFonts(next); if (settings.defaultFontFamily === font.family) saveSettings({ defaultFontFamily: "Arial" }); }} style={{ border: "1px solid rgba(248,113,113,0.25)", background: "rgba(248,113,113,0.06)", color: "#fca5a5", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 10 }}>Remove</button></div>) : <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>No custom fonts uploaded. Built-in fallback fonts remain available.</div>}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2097,6 +2197,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             )}
             {activeNav === "custom-provider" && <CustomProviderPanel />}
             {activeNav === "text-prompts" && <TextPromptsPanel />}
+            {activeNav === "text-rendering" && <TextRenderingPanel />}
             {activeNav === "debug" && IS_DEBUG && <DebugPanel />}
           </div>
         </div>

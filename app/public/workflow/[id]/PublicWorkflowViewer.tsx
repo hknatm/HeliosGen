@@ -25,6 +25,8 @@ import PromptComposerNode from "@/components/nodes/PromptComposerNode";
 import BrandProfileNode from "@/components/nodes/BrandProfileNode";
 import StyleProfileNode from "@/components/nodes/StyleProfileNode";
 import TextContentNode from "@/components/nodes/TextContentNode";
+import TextRendererNode from "@/components/nodes/TextRendererNode";
+import CopyComposerNode from "@/components/nodes/CopyComposerNode";
 import GroupNode from "@/components/nodes/GroupNode";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 
@@ -39,7 +41,9 @@ const nodeTypes = {
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,
   textContentNode: TextContentNode,
+  textRendererNode: TextRendererNode,
   promptComposerNode: PromptComposerNode,
+  copyComposerNode: CopyComposerNode,
   groupNode: GroupNode,
 };
 

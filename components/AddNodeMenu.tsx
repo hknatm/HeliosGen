@@ -21,12 +21,12 @@ const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
     id: "generators",
     label: "GENERATORS",
-    nodeTypes: ["generateNode", "videoGeneratorNode", "assistantNode"],
+    nodeTypes: ["generateNode", "videoGeneratorNode", "textRendererNode", "assistantNode"],
   },
   {
     id: "resources",
     label: "INPUTS",
-    nodeTypes: ["variableNode", "styleProfileNode", "textContentNode", "promptComposerNode", "promptNode"],
+    nodeTypes: ["variableNode", "styleProfileNode", "textContentNode", "promptComposerNode", "copyComposerNode", "promptNode"],
   },
 ];
 
@@ -101,13 +101,17 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         brandProfileNode: "BRAND",
         styleProfileNode: "STYLE",
         textContentNode: "TEXT CONTENT",
+        textRendererNode: "TEXT RENDERER",
         promptComposerNode: "COMPOSER",
+        copyComposerNode: "COPY COMPOSER",
       };
       const label = type === "variableNode" ? `VARIABLE #${count}`
         : type === "brandProfileNode" ? `BRAND #${count}`
         : type === "styleProfileNode" ? `STYLE #${count}`
         : type === "textContentNode" ? `TEXT CONTENT #${count}`
+        : type === "textRendererNode" ? `TEXT RENDERER #${count}`
         : type === "promptComposerNode" ? `COMPOSER #${count}`
+        : type === "copyComposerNode" ? `COPY COMPOSER #${count}`
         : `${DISPLAY[type] ?? type} #${count}`;
 
       let nodeX: number;

@@ -40,7 +40,10 @@ function sourceNodeTypesFor(targetHandle: string | null): string[] {
     case "image":
     case "startFrame":
     case "endFrame":
-    case "resource":                       return ["imageInputNode", "generateNode"];
+    case "resource":                       return ["imageInputNode", "generateNode", "textRendererNode"];
+    case "text":                           return ["textContentNode", "copyComposerNode"];
+    case "style":                          return ["styleProfileNode"];
+
     case "videoRef":
     case "referenceVideo":                 return ["videoInputNode"];
     default:                               return [];
@@ -50,6 +53,8 @@ function sourceNodeTypesFor(targetHandle: string | null): string[] {
 // The output handle ID to use on a newly-created source node for a given target handle
 function outputHandleForNewNode(newNodeType: string, targetHandle: string): string | undefined {
   if (newNodeType === "textContentNode") return "textOut";
+  if (newNodeType === "copyComposerNode") return "textOut";
+  if (newNodeType === "textRendererNode") return "imageOut";
   if (newNodeType === "videoInputNode") {
     if (targetHandle === "videoRef" || targetHandle === "referenceVideo") return "videoRefOut";
     if (targetHandle === "startFrame") return "startFrameOut";
@@ -63,6 +68,15 @@ function inputHandleTopY(nodeType: string | undefined, handleId: string | null, 
   if (nodeType === "generateNode") {
     if (handleId === "prompt") return nodeH - 90; // calc(100% - 90px) for models with supportsImages
     if (handleId === "image")  return nodeH - 52;
+  }
+  if (nodeType === "textRendererNode") {
+    if (handleId === "image") return nodeH * 0.35;
+    if (handleId === "text") return nodeH * 0.5;
+    if (handleId === "style") return nodeH * 0.65;
+  }
+  if (nodeType === "copyComposerNode") {
+    if (handleId === "text") return nodeH * 0.3;
+    if (handleId === "variables") return nodeH * 0.5;
   }
   if (nodeType === "videoGeneratorNode") {
     // Handles are bottom-anchored: bottom = 52 + idx * 38 → top = nodeH - that
@@ -81,7 +95,9 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   brandProfileNode:   "BRAND",
   styleProfileNode:   "STYLE",
   promptComposerNode: "COMPOSER",
+  copyComposerNode:   "COPY COMPOSER",
   textContentNode:    "TEXT CONTENT",
+  textRendererNode:   "TEXT RENDERER",
   generateNode:       "IMAGE GEN",
   videoGeneratorNode: "VIDEO GEN",
   assistantNode:      "ASSISTANT",
@@ -110,12 +126,23 @@ function targetHandleFor(
   sourceHandleId: string | null,
 ): string | null {
   if (targetNodeType === "promptComposerNode" && (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode")) return "variables";
+  if (targetNodeType === "copyComposerNode") {
+    if (sourceNodeType === "textContentNode") return "text";
+    if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode") return "variables";
+    return null;
+  }
+  if (targetNodeType === "textRendererNode") {
+    if (sourceNodeType === "generateNode" || sourceNodeType === "imageInputNode" || sourceNodeType === "textRendererNode") return "image";
+    if (sourceNodeType === "textContentNode" || sourceNodeType === "copyComposerNode") return "text";
+    if (sourceNodeType === "styleProfileNode") return "style";
+    return null;
+  }
 
   // Typed output handles take priority
   if (sourceHandleId) {
     switch (sourceHandleId) {
       case "textOut":
-        return "prompt";
+        return sourceNodeType === "copyComposerNode" ? null : "prompt";
       case "startFrameOut":
       case "imagePickOut":
         if (targetNodeType === "videoGeneratorNode") return "startFrame";
@@ -135,9 +162,10 @@ function targetHandleFor(
   }
   // Single-output nodes — fall back to node-type routing
   if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "promptComposerNode" || sourceNodeType === "variableNode" || sourceNodeType === "textContentNode") return "prompt";
-  if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode") {
+  if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") {
     if (targetNodeType === "videoGeneratorNode") return "startFrame";
     if (targetNodeType === "generateNode")       return "image";
+    if (targetNodeType === "textRendererNode")   return "image";
   }
   if (sourceNodeType === "videoInputNode") {
     if (targetNodeType === "videoGeneratorNode") return "videoRef";

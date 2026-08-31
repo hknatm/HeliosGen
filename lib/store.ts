@@ -28,7 +28,8 @@ import {
 export type NodeStatus = "idle" | "pending" | "running" | "done" | "error";
 export type GenerateMode = "t2i" | "t2v" | "i2i" | "i2v";
 
-export type TextFontFamily = "Arial" | "Helvetica" | "Georgia" | "Times New Roman";
+/** A built-in font family or an uploaded font family registered in Settings. */
+export type TextFontFamily = string;
 export type TextAlignment = "left" | "center" | "right";
 
 export interface TextContent {
@@ -66,6 +67,14 @@ export interface NodeData extends Record<string, unknown> {
   profileJson?: string;
   /** Structured, deterministic source copy for a Text Content node. */
   textContent?: TextContent;
+  /** Copy Composer's separately reviewable proposed text. */
+  refinedTextContent?: TextContent;
+  /** Raw JSON emitted by the Copy Composer model (for review). */
+  copyJson?: string;
+  /** Text model used by the Copy Composer. */
+  copyModel?: string;
+  /** True only after the user explicitly accepts the proposed copy. */
+  copyAccepted?: boolean;
   // generate node
   mode?: GenerateMode;
   model?: string;
@@ -104,6 +113,8 @@ export interface NodeData extends Record<string, unknown> {
   locked?: boolean;
   // pending job
   taskId?: string;
+  /** Pipeline trigger for the deterministic Text Renderer. */
+  pendingRender?: boolean;
 }
 
 /** Pick only the listed keys from an object; returns null if none are present. */
@@ -128,7 +139,9 @@ export function getNodeLabel(type: string, n: number): string {
     brandProfileNode:    `Brand #${n}`,
     styleProfileNode:    `Style #${n}`,
     textContentNode:     `Text Content #${n}`,
+    textRendererNode:    `Text Renderer #${n}`,
     promptComposerNode:  `Prompt Composer #${n}`,
+    copyComposerNode:    `Copy Composer #${n}`,
   };
   return map[type] ?? `Node #${n}`;
 }

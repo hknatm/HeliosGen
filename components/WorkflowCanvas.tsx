@@ -30,6 +30,10 @@ import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 import { loadCustomProviderConfig } from "@/lib/customProvider";
 import { getSystemPrompt } from "@/lib/systemPrompt";
+import { hasRenderableText, resolveTextRendererInputs } from "@/lib/textRendererSources";
+import { buildCopyComposerPrompt, hasRefinedCopy, mergeRefinedCopy, parseCopyJson, resolveCopyComposerInputs, validateRefinedCopy } from "@/lib/copyComposer";
+import { loadTextFonts, resolveTextFont } from "@/lib/textFonts";
+import { loadTextRenderingSettings } from "@/lib/textRenderingSettings";
 
 import { motion } from "motion/react";
 import TypewriterHeading from "@/components/ui/TypewriterHeading";
@@ -44,6 +48,8 @@ import PromptComposerNode from "./nodes/PromptComposerNode";
 import BrandProfileNode from "./nodes/BrandProfileNode";
 import StyleProfileNode from "./nodes/StyleProfileNode";
 import TextContentNode from "./nodes/TextContentNode";
+import TextRendererNode from "./nodes/TextRendererNode";
+import CopyComposerNode from "./nodes/CopyComposerNode";
 import GroupNode from "./nodes/GroupNode";
 import NodePickerMenu, { DropState } from "./NodePickerMenu";
 import SelectionToolbar from "./SelectionToolbar";
@@ -81,7 +87,9 @@ const nodeTypes = {
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,
   textContentNode: TextContentNode,
+  textRendererNode: TextRendererNode,
   promptComposerNode: PromptComposerNode,
+  copyComposerNode: CopyComposerNode,
   groupNode: GroupNode,
 };
 
@@ -176,14 +184,18 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     brandProfileNode: "BRAND",
     styleProfileNode: "STYLE",
     textContentNode: "TEXT CONTENT",
+    textRendererNode: "TEXT RENDERER",
     promptComposerNode: "COMPOSER",
+    copyComposerNode: "COPY COMPOSER",
   };
   if (type === "assistantNode") return "ASSISTANT";
   if (type === "variableNode") return `VARIABLE #${count}`;
   if (type === "brandProfileNode") return `BRAND #${count}`;
   if (type === "styleProfileNode") return `STYLE #${count}`;
   if (type === "textContentNode") return `TEXT CONTENT #${count}`;
+  if (type === "textRendererNode") return `TEXT RENDERER #${count}`;
   if (type === "promptComposerNode") return `COMPOSER #${count}`;
+  if (type === "copyComposerNode") return `COPY COMPOSER #${count}`;
   return `${names[type] ?? type} #${count}`;
 }
 
@@ -1003,6 +1015,26 @@ export default function WorkflowCanvas() {
         source?.type !== "promptComposerNode"
       ) return false;
 
+      // Text Renderer accepts only an app image, structured Text Content, and Style Profile.
+      if (target?.type === "textRendererNode") {
+        const validRendererSource =
+          (connection.targetHandle === "image" && (source?.type === "generateNode" || source?.type === "imageInputNode" || source?.type === "textRendererNode")) ||
+          (connection.targetHandle === "text" && (source?.type === "textContentNode" || source?.type === "copyComposerNode")) ||
+          (connection.targetHandle === "style" && source?.type === "styleProfileNode");
+        if (!validRendererSource) return false;
+        if (edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
+      }
+
+      // Copy Composer takes one Text Content node (required) plus optional
+      // Variables / Brand Context. Image Style Profiles are excluded.
+      if (target?.type === "copyComposerNode") {
+        const validCopySource =
+          (connection.targetHandle === "text" && source?.type === "textContentNode") ||
+          (connection.targetHandle === "variables" && (source?.type === "variableNode" || source?.type === "brandProfileNode"));
+        if (!validCopySource) return false;
+        if (connection.targetHandle === "text" && edges.some((edge) => edge.target === connection.target && edge.targetHandle === "text")) return false;
+      }
+
       // Prompt Composer tokens are named by Variables and Profile (Brand Context / Image Style Profile) nodes.
       if (connection.targetHandle === "variables" && source?.type !== "variableNode" && source?.type !== "brandProfileNode" && source?.type !== "styleProfileNode") return false;
 
@@ -1249,6 +1281,111 @@ export default function WorkflowCanvas() {
         }
       }
 
+      // ── Copy Composer ──────────────────────────────────────────────────────
+      // AI-only: refines the exact authored Text Content (plus optional
+      // Variables / Brand Context) into strict structured copy JSON. The raw
+      // text is preserved verbatim; only copy the user explicitly accepts
+      // (copyAccepted === true) is exposed to a downstream Text Renderer.
+      if (node.type === "copyComposerNode") {
+        const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
+        const copyInputs = resolveCopyComposerInputs(nodeId, fresh, edges);
+
+        if (!copyInputs.raw || !hasRefinedCopy(copyInputs.raw)) {
+          updateNodeData(nodeId, { status: "error", errorMsg: "Connect a Text Content node with non-empty copy.", copyAccepted: false });
+          push(`[${node.id}] skipped — no raw Text Content`, false);
+          continue;
+        }
+
+        if (debugMode) {
+          console.log(`[DEBUG] copyComposerNode=${node.id}`, { model: node.data.copyModel });
+          push(`[DEBUG] ${node.id} — logged to console`);
+          continue;
+        }
+
+        push(`[${node.id}] composing copy with AI…`);
+        updateNodeData(nodeId, { status: "running", errorMsg: undefined, copyJson: "", refinedTextContent: undefined, copyAccepted: false });
+
+        try {
+          const model = (node.data.copyModel as string | undefined) ?? "claude-sonnet-4-6";
+          const customProvider = model.startsWith("custom:") ? loadCustomProviderConfig() : undefined;
+          const res = await fetch("/api/assistant", {
+            method: "POST",
+            headers: authHeaders(token),
+            body: JSON.stringify({
+              prompt: buildCopyComposerPrompt(copyInputs),
+              model,
+              systemPrompt: getSystemPrompt("copyComposer"),
+              ...(customProvider ? { customProvider } : {}),
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Copy composing failed" }));
+            throw new Error(err.error ?? "Copy composing failed");
+          }
+
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let accumulated = "";
+          outer: while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const payload = line.slice(6).trim();
+              if (payload === "[DONE]") break outer;
+              try {
+                const parsed = JSON.parse(payload);
+                const delta =
+                  (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
+                    ? parsed.delta.text
+                    : null) ??
+                  parsed.choices?.[0]?.delta?.content ??
+                  "";
+                if (delta) { accumulated += delta; updateNodeData(nodeId, { copyJson: accumulated }); }
+              } catch { /* skip malformed SSE lines */ }
+            }
+          }
+
+          const refinedFields = parseCopyJson(accumulated);
+          if (!refinedFields) {
+            updateNodeData(nodeId, {
+              status: "error",
+              errorMsg: "The model did not return valid structured copy JSON. No copy was produced.",
+              copyJson: accumulated,
+              refinedTextContent: undefined,
+              copyAccepted: false,
+            });
+            push(`[${node.id}] error: invalid structured copy JSON — nothing exposed`, false);
+            continue;
+          }
+
+          const validation = validateRefinedCopy(copyInputs.raw, refinedFields);
+          if (!validation.ok) {
+            const message = validation.warnings.join(" ");
+            updateNodeData(nodeId, { status: "error", errorMsg: message, copyJson: accumulated, refinedTextContent: undefined, copyAccepted: false });
+            push(`[${node.id}] error: ${message} — nothing exposed`, false);
+            continue;
+          }
+          const merged = mergeRefinedCopy(copyInputs.raw, refinedFields);
+          updateNodeData(nodeId, {
+            status: "done",
+            copyJson: accumulated,
+            refinedTextContent: merged,
+            copyAccepted: false,
+            errorMsg: undefined,
+          });
+          push(`[${node.id}] done — accept the copy before the Text Renderer uses it`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          updateNodeData(nodeId, { status: "error", errorMsg: msg, copyJson: "", refinedTextContent: undefined, copyAccepted: false });
+          push(`[${node.id}] error: ${msg} — nothing exposed`, false);
+        }
+      }
+
       // ── Image generator ─────────────────────────────────────────────────────
       if (node.type === "generateNode") {
         // Extract frames from VideoInputNodes on the image handle that lack a capturedFrameUrl.
@@ -1343,6 +1480,49 @@ export default function WorkflowCanvas() {
 
           if (!imageUrl) throw new Error("Timed out waiting for generation result");
           updateNodeData(nodeId, { status: "done", imageUrl });
+          push(`[${node.id}] done`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          updateNodeData(nodeId, { status: "error", errorMsg: msg });
+          push(`[${node.id}] error: ${msg}`, false);
+        }
+      }
+
+      // ── Text Renderer ──────────────────────────────────────────────────────
+      // A pure deterministic still-image pass. It never asks an LLM to render
+      // or rewrite copy; it composites approved Text Content into the authored
+      // Style Profile copy-space after upstream media is ready.
+      if (node.type === "textRendererNode") {
+        const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
+        const rendererInputs = resolveTextRendererInputs(nodeId, fresh, edges);
+        if (!rendererInputs.imageUrl || !rendererInputs.content || !rendererInputs.composition || !hasRenderableText(rendererInputs.content)) {
+          updateNodeData(nodeId, { status: "error", errorMsg: "Connect an image, non-empty Text Content, and Image Style Profile copy space." });
+          push(`[${node.id}] skipped — missing image, text, or copy space`, false);
+          continue;
+        }
+        if (debugMode) {
+          console.log(`[DEBUG] textRendererNode=${node.id}`, rendererInputs);
+          push(`[DEBUG] ${node.id} — logged to console`);
+          continue;
+        }
+        push(`[${node.id}] rendering text overlay…`);
+        updateNodeData(nodeId, { status: "running", imageUrl: undefined, errorMsg: undefined });
+        try {
+          const font = resolveTextFont(loadTextFonts(), rendererInputs.content.fontFamily);
+          const response = await fetch("/api/render-text", {
+            method: "POST",
+            headers: authHeaders(token),
+            body: JSON.stringify({
+              imageUrl: rendererInputs.imageUrl,
+              content: rendererInputs.content,
+              composition: rendererInputs.composition,
+              settings: loadTextRenderingSettings(),
+              ...(font ? { fontUrl: font.url } : {}),
+            }),
+          });
+          const result = await response.json().catch(() => ({})) as { imageUrl?: string; error?: string };
+          if (!response.ok || !result.imageUrl) throw new Error(result.error ?? "Text render failed");
+          updateNodeData(nodeId, { status: "done", imageUrl: result.imageUrl, errorMsg: undefined });
           push(`[${node.id}] done`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);

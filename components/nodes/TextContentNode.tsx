@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import { NodeData, TextContent, useWorkflowStore } from "@/lib/store";
 import { textContentToPrompt } from "@/lib/executor";
+import { fontOptions, loadTextFonts, TEXT_FONTS_CHANGED_EVENT } from "@/lib/textFonts";
+import { loadTextRenderingSettings } from "@/lib/textRenderingSettings";
 import { useReadOnly } from "@/lib/readOnlyContext";
 
 type TextContentNodeType = Node<NodeData, "textContentNode">;
@@ -30,7 +32,7 @@ function contentFromData(data: NodeData): TextContent {
     subtitle: typeof saved.subtitle === "string" ? saved.subtitle : "",
     bullets: Array.isArray(saved.bullets) ? saved.bullets.filter((item): item is string => typeof item === "string") : [],
     cta: typeof saved.cta === "string" ? saved.cta : "",
-    fontFamily: saved.fontFamily === "Helvetica" || saved.fontFamily === "Georgia" || saved.fontFamily === "Times New Roman" ? saved.fontFamily : "Arial",
+    fontFamily: typeof saved.fontFamily === "string" && saved.fontFamily.trim() ? saved.fontFamily.trim() : "Arial",
     textColor: typeof saved.textColor === "string" && /^#[0-9A-Fa-f]{6}$/.test(saved.textColor) ? saved.textColor.toUpperCase() : "#FFFFFF",
     accentColor: typeof saved.accentColor === "string" && /^#[0-9A-Fa-f]{6}$/.test(saved.accentColor) ? saved.accentColor.toUpperCase() : "#F59E0B",
     alignment: saved.alignment === "center" || saved.alignment === "right" ? saved.alignment : "left",
@@ -43,11 +45,29 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
   const onNodesChange = useWorkflowStore((state) => state.onNodesChange);
   const cardRef = useRef<HTMLDivElement>(null);
   const fieldsRef = useRef<HTMLDivElement>(null);
+  const [fonts, setFonts] = useState(() => loadTextFonts());
   const content = useMemo(() => contentFromData(data), [data]);
+  const availableFonts = useMemo(() => fontOptions(fonts), [fonts]);
 
   useEffect(() => {
-    if (!data.textContent) updateNodeData(id, { textContent: EMPTY_TEXT_CONTENT });
+    if (!data.textContent) {
+      const defaults = loadTextRenderingSettings();
+      updateNodeData(id, { textContent: { ...EMPTY_TEXT_CONTENT, fontFamily: defaults.defaultFontFamily, textColor: defaults.defaultTextColor, accentColor: defaults.defaultAccentColor, alignment: defaults.defaultAlignment } });
+    }
   }, [data.textContent, id, updateNodeData]);
+
+  useEffect(() => {
+    const refresh = () => setFonts(loadTextFonts());
+    window.addEventListener(TEXT_FONTS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(TEXT_FONTS_CHANGED_EVENT, refresh);
+  }, []);
+
+  // If an uploaded font is removed, persist a valid deterministic fallback
+  // instead of only showing Arial while leaving stale node data behind.
+  useEffect(() => {
+    if (availableFonts.includes(content.fontFamily)) return;
+    updateNodeData(id, { textContent: { ...content, fontFamily: "Arial" } });
+  }, [availableFonts, content, id, updateNodeData]);
 
   useEffect(() => {
     const fieldsElement = fieldsRef.current;
@@ -117,7 +137,7 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
         <div ref={fieldsRef} className="node-scroll-region" style={{ display: "flex", flexDirection: "column", gap: 9, overflowY: "auto", overscrollBehavior: "contain", paddingRight: 2, minHeight: 0, flex: 1 }}>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 78px 78px", gap: 6 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.42)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em" }}>FONT
-              <select value={content.fontFamily} disabled={readOnly} aria-label="Text font family" onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => save({ fontFamily: event.target.value as TextContent["fontFamily"] })} style={{ minWidth: 0, borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "#151821", color: "rgba(255,255,255,0.85)", padding: "5px", fontSize: 10, outline: "none" }}><option>Arial</option><option>Helvetica</option><option>Georgia</option><option>Times New Roman</option></select>
+              <select value={availableFonts.includes(content.fontFamily) ? content.fontFamily : "Arial"} disabled={readOnly} aria-label="Text font family" onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => save({ fontFamily: event.target.value })} style={{ minWidth: 0, borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "#151821", color: "rgba(255,255,255,0.85)", padding: "5px", fontSize: 10, outline: "none" }}>{availableFonts.map((family) => <option key={family} value={family}>{family}</option>)}</select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 3, color: "rgba(255,255,255,0.42)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em" }}>TEXT
               <input type="color" value={content.textColor} disabled={readOnly} aria-label="Text color" onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => save({ textColor: event.target.value.toUpperCase() })} style={{ width: "100%", height: 28, padding: 2, borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "#151821", cursor: readOnly ? "default" : "pointer" }} />
