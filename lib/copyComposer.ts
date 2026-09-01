@@ -204,14 +204,14 @@ export function validateRefinedCopy(
     const rawBullets = raw.bullets.filter((b) => b.trim()).length;
     const refinedBullets = refined.bullets.filter((b) => b.trim()).length;
     if (refinedBullets > rawBullets) {
-      warnings.push(`Refined copy adds ${refinedBullets - rawBullets} bullet(s) beyond the ${rawBullets} in the source.`);
+      warnings.push(`Refined text adds ${refinedBullets - rawBullets} bullet(s) beyond the ${rawBullets} in the source.`);
     }
     const guardedFields: Array<[keyof Pick<RefinedCopyFields, "eyebrow" | "title" | "subtitle" | "cta">, string]> = [
       ["eyebrow", "eyebrow"], ["title", "title"], ["subtitle", "subtitle"], ["cta", "CTA"],
     ];
     for (const [field, label] of guardedFields) {
-      if (!raw[field].trim() && refined[field].trim()) warnings.push(`Refined copy adds a ${label} where the source had none.`);
-      if (raw[field].trim() && !refined[field].trim()) warnings.push(`Refined copy removes the source ${label}.`);
+      if (!raw[field].trim() && refined[field].trim()) warnings.push(`Refined text adds a ${label} where the source had none.`);
+      if (raw[field].trim() && !refined[field].trim()) warnings.push(`Refined text removes the source ${label}.`);
     }
   }
   return { ok: warnings.length === 0, warnings };

@@ -456,6 +456,14 @@ body {
   transition-delay: 0ms !important;
 }
 
+/* Text/prompt output → also show the typed text input handles (Text Renderer, Copy Composer) */
+.react-flow[data-connecting-type="prompt"] .react-flow__handle-left.node-handle-icon-text-input {
+  transform: translate(-100%, -50%) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition-delay: 0ms !important;
+}
+
 /* Image output → image + resource + character inputs */
 .react-flow[data-connecting-type="image"] .react-flow__handle-left.node-handle-icon-image,
 .react-flow[data-connecting-type="image"] .react-flow__handle-left.node-handle-icon-resource,

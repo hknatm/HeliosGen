@@ -53,7 +53,7 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
   const render = useCallback(async () => {
     if (readOnly || rendering) return;
     if (!ready || !inputs.imageUrl || !inputs.content || !inputs.composition) {
-      updateNodeData(id, { status: "error", errorMsg: "Connect an image, non-empty Text Content, and Image Style Profile copy space." });
+      updateNodeData(id, { status: "error", errorMsg: "Connect an image, non-empty Text Content, and Image Style Profile text area." });
       return;
     }
     setRendering(true);
@@ -91,7 +91,7 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
 
   const mouseDown = useCallback((event: React.MouseEvent) => event.stopPropagation(), []);
   const hasUnacceptedCopy = edges.some((edge) => edge.target === id && edge.targetHandle === "text" && nodes.some((node) => node.id === edge.source && node.type === "copyComposerNode" && node.data.copyAccepted !== true));
-  const message = !inputs.imageUrl ? "Connect a generated or uploaded image." : !hasRenderableText(inputs.content) ? (hasUnacceptedCopy ? "Accept the connected Copy Composer proposal before rendering." : "Connect Text Content with at least one non-empty field.") : !inputs.composition ? "Connect an Image Style Profile with copy space." : "Ready to render a new deterministic image asset.";
+  const message = !inputs.imageUrl ? "Required: connect a generated or uploaded image." : !hasRenderableText(inputs.content) ? (hasUnacceptedCopy ? "Required: approve the connected Text Refiner draft first." : "Required: connect Text Content with at least one non-empty field.") : !inputs.composition ? "Required: connect an Image Style Profile with a reserved text area." : "Ready: renders the approved text exactly into the reserved text area.";
 
   return (
     <div ref={cardRef} className={`node-card w-full h-full flex flex-col${isRendering ? " node-generating" : ""}`} style={{ minWidth: 320, overflow: "visible" }}>
@@ -102,7 +102,7 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
           <span style={{ width: 22, height: 22, display: "grid", placeItems: "center", borderRadius: 6, background: "rgba(249,115,22,0.14)", color: "#fdba74", fontWeight: 800, fontSize: 13 }}>T</span>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ color: "rgba(255,255,255,0.88)", fontSize: 12, fontWeight: 600 }}>Text Renderer</div>
-            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Exact typography over a completed image</div>
+            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Places approved text onto a finished image</div>
           </div>
           <span style={{ color: ready ? "#86efac" : "rgba(255,255,255,0.35)", fontSize: 10, fontFamily: "monospace" }}>{ready ? "ready" : "waiting"}</span>
         </div>
@@ -110,14 +110,15 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6 }}>
           {[
             ["IMAGE", !!inputs.imageUrl, inputs.imageUrl ? "Connected" : "Required"],
-            ["COPY", hasRenderableText(inputs.content), inputs.content?.title || inputs.content?.eyebrow || inputs.content?.subtitle || inputs.content?.bullets.find((bullet) => bullet.trim()) || inputs.content?.cta || "Required"],
-            ["COPY SPACE", !!inputs.composition, inputs.composition ? `${Math.round(inputs.composition.copySpace.width * 100)}% reserved` : "Required"],
+            ["TEXT", hasRenderableText(inputs.content), inputs.content?.title || inputs.content?.eyebrow || inputs.content?.subtitle || inputs.content?.bullets.find((bullet) => bullet.trim()) || inputs.content?.cta || "Required"],
+            ["TEXT AREA", !!inputs.composition, inputs.composition ? `${Math.round(inputs.composition.copySpace.width * 100)}% reserved` : "Required"],
           ].map(([label, valid, value]) => <div key={String(label)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 6, border: `1px solid ${valid ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.08)"}`, background: valid ? "rgba(74,222,128,0.05)" : "rgba(255,255,255,0.025)" }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: valid ? "#4ade80" : "rgba(255,255,255,0.25)" }} /><span style={{ width: 72, color: "rgba(255,255,255,0.42)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em" }}>{label}</span><span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: valid ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.35)", fontSize: 10 }}>{String(value)}</span></div>)}
         </div>
 
         <div style={{ borderRadius: 7, padding: "8px 9px", background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.2)" }}>
           <div style={{ color: "rgba(253,186,116,0.8)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", marginBottom: 3 }}>RENDER CONTRACT</div>
           <div role="status" aria-live="polite" style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, lineHeight: 1.4 }}>{message}</div>
+          <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 9, lineHeight: 1.35, marginTop: 5 }}>Inputs are typed: image → IMAGE, authored or approved text → TEXT, and Image Style Profile → TEXT AREA.</div>
           {font && <div style={{ color: "rgba(253,186,116,0.72)", fontSize: 9, marginTop: 4 }}>Uploaded font: {font.family}</div>}
           {inputs.content && !font && !["Arial", "Helvetica", "Georgia", "Times New Roman"].includes(inputs.content.fontFamily) && <div style={{ color: "#fbbf24", fontSize: 9, marginTop: 4 }}>Selected uploaded font is unavailable; the renderer will use Arial.</div>}
         </div>
@@ -126,9 +127,12 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
         {data.imageUrl && <div role="status" aria-live="polite" style={{ color: "rgba(134,239,172,0.85)", fontSize: 10 }}>Rendered asset ready</div>}
         {data.errorMsg && <div role="status" aria-live="polite" style={{ color: "#fca5a5", fontSize: 10 }}>{String(data.errorMsg).slice(0, 140)}</div>}
       </div>
-      <Handle type="target" position={Position.Left} id="image" style={{ top: "35%", background: "#fb923c", border: "2px solid #171923", width: 10, height: 10 }} />
-      <Handle type="target" position={Position.Left} id="text" style={{ top: "50%", background: "#f59e0b", border: "2px solid #171923", width: 10, height: 10 }} />
-      <Handle type="target" position={Position.Left} id="style" style={{ top: "65%", background: "#38bdf8", border: "2px solid #171923", width: 10, height: 10 }} />
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(35% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>IMAGE</span>
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(50% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>TEXT</span>
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(65% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>AREA</span>
+      <Handle type="target" position={Position.Left} id="image" title="Required: generated, uploaded, or rendered image" style={{ top: "35%", background: "#fb923c", border: "2px solid #171923", width: 10, height: 10 }} />
+      <Handle type="target" position={Position.Left} id="text" title="Required: Text Content or approved Text Refiner output" className="node-handle-icon-text-input" style={{ top: "50%", background: "#f59e0b", border: "2px solid #171923", width: 10, height: 10 }} />
+      <Handle type="target" position={Position.Left} id="style" title="Required: Image Style Profile reserved text area" style={{ top: "65%", background: "#38bdf8", border: "2px solid #171923", width: 10, height: 10 }} />
       <Handle type="source" position={Position.Right} id="imageOut" className="node-handle-icon node-handle-icon-out-image" title="Rendered image output" style={{ background: "#f97316", border: "2px solid #171923", width: 10, height: 10 }} />
     </div>
   );

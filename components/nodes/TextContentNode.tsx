@@ -129,7 +129,7 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
           <span style={{ width: 22, height: 22, display: "grid", placeItems: "center", borderRadius: 6, background: "rgba(245,158,11,0.14)", color: "#fcd34d", fontWeight: 800, fontSize: 13 }}>T</span>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ color: "rgba(255,255,255,0.88)", fontSize: 12, fontWeight: 600 }}>Text Content</div>
-            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Raw copy — preserved exactly for review and rendering</div>
+            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Raw text — preserved exactly for review and rendering</div>
           </div>
           <span style={{ color: "rgba(252,211,77,0.8)", fontSize: 10, fontFamily: "monospace" }}>{nonEmptyBlocks} blocks</span>
         </div>
@@ -180,7 +180,7 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
         </div>
         <div style={{ borderRadius: 7, padding: "7px 8px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
           <div style={{ color: "rgba(252,211,77,0.76)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", marginBottom: 3 }}>DETERMINISTIC PROMPT INPUT</div>
-          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, lineHeight: 1.35, whiteSpace: "pre-wrap", maxHeight: 42, overflow: "auto" }}>{promptPreview || "Add copy to use this node as a prompt source."}</div>
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, lineHeight: 1.35, whiteSpace: "pre-wrap", maxHeight: 42, overflow: "auto" }}>{promptPreview || "Add text to use this node as a prompt source."}</div>
         </div>
       </div>
       <Handle type="source" position={Position.Right} id="textOut" title="Structured text output" className="node-handle-icon node-handle-icon-out-text" style={{ background: "#f59e0b", border: "2px solid #171923", width: 10, height: 10 }} />

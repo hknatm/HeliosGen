@@ -1568,7 +1568,7 @@ const TEXT_PROMPT_SPECS: TextPromptSpec[] = [
   { id: "assistantNode", title: "Assistant Node", description: "Used by the Assistant node to rewrite a prompt into a clearer, more effective version." },
   { id: "workflowRun", title: "Workflow Run", description: "Used when rewriting a prompt during a workflow run." },
   { id: "promptComposer", title: "Prompt Composer", description: "Sole prompt-policy control for the Prompt Composer node. Instructs the model how to turn the structured Variables / Style / Brand JSON context into a final image or video prompt." },
-  { id: "copyComposer", title: "Copy Composer", description: "Sole prompt-policy control for the Copy Composer node. Instructs the model how to refine the exact authored Text Content (plus optional Variables / Brand Context) into strict structured copy JSON without inventing factual claims." },
+  { id: "copyComposer", title: "Copy Composer", description: "Sole prompt-policy control for the Copy Composer node. Instructs the model how to refine the exact authored Text Content (plus optional Variables / Brand Context) into strict structured text JSON without inventing factual claims." },
 ];
 
 function TextPromptsPanel() {

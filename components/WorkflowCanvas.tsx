@@ -1291,7 +1291,7 @@ export default function WorkflowCanvas() {
         const copyInputs = resolveCopyComposerInputs(nodeId, fresh, edges);
 
         if (!copyInputs.raw || !hasRefinedCopy(copyInputs.raw)) {
-          updateNodeData(nodeId, { status: "error", errorMsg: "Connect a Text Content node with non-empty copy.", copyAccepted: false });
+          updateNodeData(nodeId, { status: "error", errorMsg: "Connect a Text Content node with non-empty text.", copyAccepted: false });
           push(`[${node.id}] skipped — no raw Text Content`, false);
           continue;
         }
@@ -1496,8 +1496,8 @@ export default function WorkflowCanvas() {
         const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
         const rendererInputs = resolveTextRendererInputs(nodeId, fresh, edges);
         if (!rendererInputs.imageUrl || !rendererInputs.content || !rendererInputs.composition || !hasRenderableText(rendererInputs.content)) {
-          updateNodeData(nodeId, { status: "error", errorMsg: "Connect an image, non-empty Text Content, and Image Style Profile copy space." });
-          push(`[${node.id}] skipped — missing image, text, or copy space`, false);
+          updateNodeData(nodeId, { status: "error", errorMsg: "Connect an image, non-empty Text Content, and Image Style Profile text area." });
+          push(`[${node.id}] skipped — missing image, text, or text area`, false);
           continue;
         }
         if (debugMode) {

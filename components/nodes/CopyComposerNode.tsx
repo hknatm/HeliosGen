@@ -297,8 +297,8 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px", minHeight: 0, height: "100%" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: 600 }}>Copy Composer</div>
-            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Refines raw copy into strict structured JSON</div>
+            <div style={{ color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: 600 }}>Text Refiner</div>
+            <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 10, marginTop: 1 }}>Improves your text without changing its facts</div>
           </div>
 
           {/* Model selector */}
@@ -340,11 +340,11 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
 
         {/* Raw text preview — preserved verbatim */}
         <div style={{ borderRadius: 7, padding: "8px 9px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
-          <div style={{ color: "rgba(252,211,77,0.76)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", marginBottom: 3 }}>RAW TEXT · {hasRaw ? `${copyBlocks(raw)} blocks` : "REQUIRED"}</div>
+          <div style={{ color: "rgba(252,211,77,0.76)", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", marginBottom: 3 }}>INPUT TEXT · {hasRaw ? `${copyBlocks(raw)} blocks` : "REQUIRED"}</div>
           <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, lineHeight: 1.4, whiteSpace: "pre-wrap", maxHeight: 46, overflow: "auto" }}>
             {hasRaw
               ? [raw!.eyebrow, raw!.title, raw!.subtitle, ...raw!.bullets, raw!.cta].filter((v) => v.trim()).join("\n")
-              : "Connect a Text Content node to refine its copy."}
+              : "Connect a Text Content node to refine its text."}
           </div>
         </div>
 
@@ -385,7 +385,7 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
         {/* Process / status */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 7, background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.2)" }}>
           <span role="status" aria-live="polite" style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, flex: 1, lineHeight: 1.4 }}>
-            {busy ? "Composing…" : accepted ? "Copy accepted — exposed to the Text Renderer." : "Compose a refined copy proposal."}
+            {busy ? "Improving text…" : accepted ? "Approved text is ready for the Text Renderer." : "Create a draft, review it, then approve it for rendering."}
           </span>
           {!readOnly && (busy ? (
             <button
@@ -402,19 +402,19 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
               onMouseDown={buttonMouseDown}
               onClick={(e) => { e.stopPropagation(); handleProcessAI(); }}
               style={{ border: "1px solid rgba(167,139,250,0.4)", background: "rgba(167,139,250,0.18)", color: "#c4b5fd", borderRadius: 6, padding: "4px 9px", fontSize: 10, fontWeight: 600, cursor: hasRaw ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}
-            >Compose with AI</button>
+            >Improve with AI</button>
           ))}
         </div>
 
         {/* Output panel */}
         <div style={{ borderRadius: 7, padding: "8px 9px", background: "rgba(255,255,255,0.035)", border: `1px solid ${busy ? "rgba(167,139,250,0.4)" : errorMsg ? "rgba(248,113,113,0.4)" : accepted ? "rgba(74,222,128,0.4)" : "rgba(255,255,255,0.08)"}` }}>
           <div style={{ color: busy ? "#c4b5fd" : errorMsg ? "#f87171" : accepted ? "#86efac" : "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", marginBottom: 4 }}>
-            {busy ? "COMPOSING…" : errorMsg ? "COMPOSE FAILED" : accepted ? "ACCEPTED COPY" : "PROPOSED COPY"}
+            {busy ? "IMPROVING…" : errorMsg ? "TEXT REFINEMENT FAILED" : accepted ? "APPROVED TEXT" : "DRAFT TEXT"}
           </div>
           <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 11, lineHeight: 1.45, whiteSpace: "pre-wrap", maxHeight: 64, overflow: "auto" }}>
             {refined && hasRefinedCopy(refined)
               ? [refined.eyebrow, refined.title, refined.subtitle, ...refined.bullets, refined.cta].filter((v) => v.trim()).join("\n")
-              : (errorMsg ? "No copy was produced. Nothing is exposed downstream." : "Your refined copy proposal will appear here.")}
+              : (errorMsg ? "No text was produced. Nothing is exposed downstream." : "Your refined text proposal will appear here.")}
           </div>
           {refined && hasRefinedCopy(refined) && !readOnly && (
             <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
@@ -432,7 +432,7 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
                   onMouseDown={buttonMouseDown}
                   onClick={(e) => { e.stopPropagation(); handleAccept(); }}
                   style={{ border: "1px solid rgba(74,222,128,0.4)", color: "#86efac", background: "rgba(74,222,128,0.14)", borderRadius: 6, padding: "4px 9px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}
-                >Accept copy</button>
+                >Approve text</button>
               )}
               <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, alignSelf: "center" }}>{proposedBlocks} blocks</span>
             </div>
@@ -442,9 +442,11 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
           )}
         </div>
       </div>
-      <Handle type="target" position={Position.Left} id="text" style={{ top: "30%", background: "#f59e0b", border: "2px solid #171923", width: 10, height: 10 }} />
-      <Handle type="target" position={Position.Left} id="variables" style={{ top: "50%", background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }} />
-      <Handle type="source" position={Position.Right} id="textOut" className="node-handle-icon node-handle-icon-out-text" title="Accepted structured copy output" style={{ background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }} />
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(30% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>TEXT</span>
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(50% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>CONTEXT</span>
+      <Handle type="target" position={Position.Left} id="text" title="Required: Text Content" className="node-handle-icon-text-input" style={{ top: "30%", background: "#f59e0b", border: "2px solid #171923", width: 10, height: 10 }} />
+      <Handle type="target" position={Position.Left} id="variables" title="Optional: Variables or Brand Context" style={{ top: "50%", background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }} />
+      <Handle type="source" position={Position.Right} id="textOut" className="node-handle-icon node-handle-icon-out-text" title="Approved text output — connect to Text Renderer" style={{ background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }} />
     </div>
   );
 }

@@ -95,7 +95,7 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   brandProfileNode:   "BRAND",
   styleProfileNode:   "STYLE",
   promptComposerNode: "COMPOSER",
-  copyComposerNode:   "COPY COMPOSER",
+  copyComposerNode:   "TEXT REFINER",
   textContentNode:    "TEXT CONTENT",
   textRendererNode:   "TEXT RENDERER",
   generateNode:       "IMAGE GEN",

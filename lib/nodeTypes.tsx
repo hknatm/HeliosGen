@@ -127,8 +127,8 @@ export const NODES: Array<{
       category: "resources",
       canReceiveConnection: true,
       icon: <PenLine size={14} strokeWidth={1.5} />,
-      label: "Copy Composer",
-      description: "Refine raw copy into strict structured JSON",
+      label: "Text Refiner",
+      description: "Improve text, then require approval before rendering",
     },
     {
       type: "promptNode",
