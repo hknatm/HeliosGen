@@ -26,7 +26,7 @@ const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
     id: "resources",
     label: "INPUTS",
-    nodeTypes: ["variableNode", "styleProfileNode", "textContentNode", "promptComposerNode", "copyComposerNode", "promptNode"],
+    nodeTypes: ["variableNode", "styleProfileNode", "promptNode"],
   },
 ];
 
@@ -96,22 +96,19 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         videoInputNode: "VIDEO",
         generateNode: "IMAGE GEN",
         videoGeneratorNode: "VIDEO GEN",
-        assistantNode: "ASSISTANT",
+        assistantNode: "AI AGENT",
         variableNode: "VARIABLE",
         brandProfileNode: "BRAND",
         styleProfileNode: "STYLE",
         textContentNode: "TEXT CONTENT",
-        textRendererNode: "TEXT RENDERER",
+        textRendererNode: "TEXT OVERLAY",
         promptComposerNode: "COMPOSER",
         copyComposerNode: "COPY COMPOSER",
       };
       const label = type === "variableNode" ? `VARIABLE #${count}`
         : type === "brandProfileNode" ? `BRAND #${count}`
         : type === "styleProfileNode" ? `STYLE #${count}`
-        : type === "textContentNode" ? `TEXT CONTENT #${count}`
-        : type === "textRendererNode" ? `TEXT RENDERER #${count}`
-        : type === "promptComposerNode" ? `COMPOSER #${count}`
-        : type === "copyComposerNode" ? `COPY COMPOSER #${count}`
+        : type === "textRendererNode" ? `TEXT OVERLAY #${count}`
         : `${DISPLAY[type] ?? type} #${count}`;
 
       let nodeX: number;
@@ -407,13 +404,14 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
           <input
             ref={searchRef}
             id="add-node-search"
+            aria-label="Search nodes"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search nodes…"
             style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "rgba(255,255,255,0.82)", fontSize: "13px", caretColor: "#2DD4BF" }}
           />
           {query && (
-            <button onClick={() => setQuery("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", padding: 0, lineHeight: 1 }}>
+            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", padding: 0, lineHeight: 1 }}>
               <X size={14} />
             </button>
           )}

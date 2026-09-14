@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GenerateButton from "@/components/nodes/GenerateButton";
 import { Handle, Position, NodeProps, Node } from "@xyflow/react";
 import { useWorkflowStore, NodeData } from "@/lib/store";
@@ -9,9 +9,17 @@ import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
-import { getSystemPrompt } from "@/lib/systemPrompt";
+import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT, getSystemPrompt } from "@/lib/systemPrompt";
+import { resolveComposerConnections, buildComposerContext, buildComposerPrompt } from "@/lib/composerSources";
+import { resolveInputs } from "@/lib/executor";
 
 type AssistantNodeType = Node<NodeData, "assistantNode">;
+
+const NAMESPACE_META: Record<string, { color: string; bg: string; border: string }> = {
+  variables: { color: "#ddd6fe", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.24)" },
+  style:     { color: "#7dd3fc", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.24)" },
+  brand:     { color: "#5eead4", bg: "rgba(45,212,191,0.12)", border: "rgba(45,212,191,0.24)" },
+};
 
 const MODELS = [
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
@@ -25,6 +33,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const addNode = useWorkflowStore((s) => s.addNode);
   const insertEdge = useWorkflowStore((s) => s.insertEdge);
   const edges = useWorkflowStore((s) => s.edges);
+  const nodes = useWorkflowStore((s) => s.nodes);
   const kieKeySet = useWorkflowStore((s) => s.kieKeySet);
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -32,8 +41,6 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const outputRef = useRef<HTMLDivElement>(null);
   const prevSelectedRef = useRef(selected);
   const abortRef = useRef<AbortController | null>(null);
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
 
   // Instant handle hide on deselect
   useEffect(() => {
@@ -50,7 +57,21 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const status = (data.status as string) ?? "idle";
   const outputText = (data.outputText as string) ?? "";
   const localPrompt = (data.localPrompt as string) ?? "";
+  const connectedPrompt = useMemo(() => resolveInputs(id, nodes, edges).prompt ?? "", [edges, id, nodes]);
   const model = (data.model as string) ?? "claude-sonnet-4-6";
+
+  // Connected structured context (Variables / Style / Brand) — the AI Agent
+  // accepts BOTH an ordinary editable text prompt AND structured context.
+  const connectedValues = useMemo(() => resolveComposerConnections(id, nodes, edges), [edges, id, nodes]);
+  const hasContext = connectedValues.length > 0;
+  const structuredContext = useMemo(() => buildComposerContext(connectedValues), [connectedValues]);
+  const connectedKeys = useMemo(() => (
+    (["variables", "style", "brand"] as const).flatMap((namespace) =>
+      Object.entries(structuredContext[namespace])
+        .filter(([, value]) => value.trim().length > 0)
+        .map(([key, value]) => ({ namespace, key, value })),
+    )
+  ), [structuredContext]);
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
   const modelOptions = [
     ...MODELS,
@@ -99,15 +120,10 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   useGeneratingBorderAnimation(cardRef, busy);
 
   const hasOutput = !!outputText;
-  const hasPrompt = !!localPrompt.trim();
+  // The AI Agent can run from structured context (Variables/Style/Brand) alone;
+  // an ordinary text prompt is optional.
+  const hasPrompt = !!localPrompt.trim() || !!connectedPrompt.trim() || hasContext;
   const sourceConnected = edges.some((e) => e.source === id);
-
-  // Auto-switch to output as soon as generation starts (or finishes)
-  useEffect(() => {
-    if (status === "running" || (status === "done" && outputText)) {
-      setViewMode("output");
-    }
-  }, [status, outputText]);
 
   // Keep textarea in sync with store
   useEffect(() => {
@@ -144,13 +160,14 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   }, [id, addNode, insertEdge, onNodesChange]);
 
   const handleGenerate = useCallback(async () => {
-    if (busy || !hasPrompt) return;
+    if (busy || !hasPrompt || !canGenerate) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     setLoading(true);
+    setViewMode("output");
     updateNodeData(id, { status: "running", outputText: "", errorMsg: undefined });
 
     try {
@@ -161,12 +178,12 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         method: "POST",
         headers: assistantHeaders,
         body: JSON.stringify({
-          prompt: localPrompt,
+          prompt: buildAgentPrompt(localPrompt, connectedPrompt, connectedValues),
           model,
-          systemPrompt: getSystemPrompt("assistantNode"),
+          systemPrompt: hasContext ? buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT) : getSystemPrompt("agent"),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
-        signal: controller.signal,
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
       });
 
       if (!res.ok) {
@@ -217,7 +234,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       setLoading(false);
       abortRef.current = null;
     }
-  }, [busy, hasPrompt, localPrompt, id, updateNodeData, model]);
+  }, [busy, canGenerate, hasPrompt, localPrompt, connectedPrompt, id, updateNodeData, model, hasContext, connectedValues]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -252,14 +269,14 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           whiteSpace: "nowrap",
         }}
       >
-        <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDuplicate(); }} title="Duplicate node"
+        <button tabIndex={selected ? 0 : -1} aria-label="Duplicate node" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDuplicate(); }} title="Duplicate node"
           className="w-7 h-7 flex items-center justify-center rounded-full text-[#777] hover:text-white hover:bg-white/10 transition-colors duration-150">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
         </button>
         <span className="w-px h-4 bg-white/[0.08] mx-0.5 shrink-0" />
-        <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDelete(); }} title="Delete node"
+        <button tabIndex={selected ? 0 : -1} aria-label="Delete node" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleDelete(); }} title="Delete node"
           className="w-7 h-7 flex items-center justify-center rounded-full text-[#777] hover:text-red-400 hover:bg-red-400/10 transition-colors duration-150">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
@@ -289,6 +306,8 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
 
         {/* Input — text lines icon */}
         <button
+          aria-label="Show input"
+          aria-pressed={viewMode === "input"}
           onClick={(e) => { e.stopPropagation(); setViewMode("input"); }}
           className="w-7 h-7 rounded-full flex items-center justify-center relative z-10"
           title="Show input"
@@ -303,6 +322,8 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
 
         {/* Output — text lines + sparkle icon; disabled until output exists */}
         <button
+          aria-label="Show output"
+          aria-pressed={viewMode === "output"}
           onClick={(e) => { e.stopPropagation(); if (hasOutput) setViewMode("output"); }}
           disabled={!hasOutput}
           className="w-7 h-7 rounded-full flex items-center justify-center relative z-10 disabled:cursor-not-allowed"
@@ -348,7 +369,23 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           {/* Editable textarea — input mode */}
           {viewMode === "input" && (
             <>
-              {!localPrompt && (
+              {hasContext && connectedKeys.length > 0 && (
+                <div
+                  onMouseDown={(e) => { if (selected) e.stopPropagation(); }}
+                  style={{ position: "absolute", top: 2, left: 2, right: 2, zIndex: 20, display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 4px 0", maxHeight: 72, overflowY: "auto" }}
+                >
+                  {connectedKeys.map((k) => (
+                    <span
+                      key={`${k.namespace}.${k.key}`}
+                      title={`${k.namespace}.${k.key} = ${k.value}`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 4, color: NAMESPACE_META[k.namespace].color, background: NAMESPACE_META[k.namespace].bg, border: `1px solid ${NAMESPACE_META[k.namespace].border}`, padding: "1px 5px", borderRadius: 4, fontSize: 9, fontFamily: "monospace", maxWidth: "100%" }}
+                    >
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.key}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!localPrompt && !hasContext && (
                 <div
                   aria-hidden
                   className="absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-[#3A4055] leading-[1.6] pointer-events-none select-none"
@@ -356,10 +393,19 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                   Describe what you want to generate…
                 </div>
               )}
+              {!localPrompt && hasContext && (
+                <div
+                  aria-hidden
+                  className="absolute inset-0 px-3 pt-[78px] pb-10 text-[13px] text-[#3A4055] leading-[1.6] pointer-events-none select-none"
+                >
+                  Optionally describe what you want… otherwise the agent composes from connected context.
+                </div>
+              )}
               <textarea
                 ref={textareaRef}
-                className="relative w-full h-full px-3 pt-10 pb-10 bg-transparent text-[13px] text-white leading-[1.6] resize-none outline-none overflow-y-auto z-10"
-                style={{ caretColor: "white", overscrollBehavior: "contain" }}
+                aria-label="AI Agent prompt"
+                className="relative w-full h-full px-3 pb-10 bg-transparent text-[13px] text-white leading-[1.6] resize-none overflow-y-auto z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-amber-300"
+                style={{ caretColor: "white", overscrollBehavior: "contain", paddingTop: hasContext ? 78 : 40 }}
                 defaultValue={localPrompt}
                 readOnly={readOnly}
                 onChange={(e) => updateNodeData(id, { localPrompt: e.target.value })}
@@ -370,7 +416,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
 
           {/* Error */}
           {status === "error" && (
-            <div className="absolute inset-x-0 bottom-12 flex justify-center pointer-events-none">
+            <div role="status" aria-live="polite" className="absolute inset-x-0 bottom-12 flex justify-center pointer-events-none">
               <span className="text-[10px] text-red-400 px-2 py-0.5 rounded bg-red-900/30">
                 {(data.errorMsg as string) ?? "Generation failed"}
               </span>
@@ -386,6 +432,10 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
             {/* Model dropdown */}
             <div className="relative">
               <button
+                aria-haspopup="menu"
+                aria-expanded={modelOpen}
+                aria-label="Select AI Agent model"
+                onKeyDown={(e) => { if (e.key === "Escape") setModelOpen(false); }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); if (!busy) setModelOpen((o) => !o); }}
                 className="flex items-center gap-1"
@@ -397,10 +447,12 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
               </button>
 
               {modelPopup.visible && (
-                <div className={`absolute bottom-full left-0 mb-2 w-44 bg-[#111622] border border-[#1E2840] rounded-md overflow-hidden z-[1002] shadow-2xl ${modelPopup.className}`}>
+                <div role="menu" aria-label="AI Agent models" onKeyDown={(e) => { if (e.key === "Escape") setModelOpen(false); }} className={`absolute bottom-full left-0 mb-2 w-44 bg-[#111622] border border-[#1E2840] rounded-md overflow-hidden z-[1002] shadow-2xl ${modelPopup.className}`}>
                   {modelOptions.map((m) => (
                     <button
                       key={m.id}
+                      role="menuitemradio"
+                      aria-checked={model === m.id}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => { e.stopPropagation(); updateNodeData(id, { model: m.id }); setModelOpen(false); }}
                       className={`w-full text-left px-3 py-[7px] text-[11px] hover:bg-[#141C28] transition-colors ${model === m.id ? "text-white" : "text-[#A0A0A0]"}`}
@@ -423,7 +475,14 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 Stop
               </button>
             ) : (
-              <GenerateButton onClick={handleGenerate} disabled={!hasPrompt || !canGenerate} />
+              <GenerateButton
+                onClick={handleGenerate}
+                disabled={!hasPrompt || !canGenerate}
+                warningMessages={[
+                  ...(!hasPrompt ? ["Enter or connect a prompt or structured context"] : []),
+                  ...(!canGenerate ? [model.startsWith("custom:") ? "Configure the custom provider" : "Add a Kie.ai API key in Settings"] : []),
+                ]}
+              />
             ))}
           </div>
         </div>
@@ -440,6 +499,32 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       >
         <BrainIcon />
       </Handle>
+
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(62% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>PROMPT</span>
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="prompt"
+        title="Optional: Text, Variable, or another AI Agent output"
+        style={{ top: "62%", background: "#2DD4BF", border: "2px solid #171923", width: 10, height: 10 }}
+      />
+
+      {/* ── Structured context input handle (Variables / Style / Brand) ── */}
+      {hasContext && (
+        <span
+          aria-hidden="true"
+          style={{ position: "absolute", left: 13, top: "calc(26% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}
+        >
+          CONTEXT
+        </span>
+      )}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="variables"
+        title="Optional: Variables, Brand Context, or Image Style Profile"
+        style={{ top: "26%", background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }}
+      />
     </div>
   );
 }
@@ -462,4 +547,13 @@ function BrainIcon() {
       <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
     </svg>
   );
+}
+
+export function buildAgentPrompt(
+  local: string,
+  connected: string,
+  connectedValues: ReturnType<typeof resolveComposerConnections>,
+): string {
+  const authored = [connected.trim(), local.trim()].filter(Boolean).join("\n\n");
+  return connectedValues.length ? buildComposerPrompt(connectedValues, undefined, authored) : authored;
 }

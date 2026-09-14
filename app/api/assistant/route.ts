@@ -40,8 +40,10 @@ export async function POST(req: NextRequest) {
   } else if (body.prompt?.trim()) {
     messages = [];
     if (body.systemPrompt?.trim()) {
-      messages.push({ role: "user", content: body.systemPrompt.trim() });
-      messages.push({ role: "assistant", content: "Understood." });
+      // Send the configured system prompt as a true role:"system" message so
+      // it is honoured as system policy by OpenAI-compatible and Anthropic
+      // endpoints alike — never smuggled in as a user turn.
+      messages.push({ role: "system", content: body.systemPrompt.trim() });
     }
     messages.push({ role: "user", content: body.prompt.trim() });
   } else {
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
       cache: "no-store",
       headers: customProviderHeaders(body.customProvider?.apiKey),
       body: JSON.stringify({ model: customModelName(model), messages, stream: true }),
+      signal: req.signal,
     });
     if (!upstream.ok) {
       return new Response(JSON.stringify({ error: await upstream.text() }), {
@@ -119,6 +122,7 @@ export async function POST(req: NextRequest) {
         frequency_penalty: 0,
         presence_penalty: 0,
       }),
+      signal: req.signal,
     });
     if (!upstream.ok) {
       const errText = await upstream.text();
@@ -155,6 +159,12 @@ export async function POST(req: NextRequest) {
 
   const openaiEndpoint = OPENAI_COMPAT_ENDPOINTS[model];
 
+  const claudeSystemPrompt = messages
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+    .join("\n\n");
+  const claudeMessages = messages.filter((message) => message.role !== "system");
+
   const upstream = openaiEndpoint
     ? await fetch(openaiEndpoint, {
         method: "POST",
@@ -170,6 +180,7 @@ export async function POST(req: NextRequest) {
           })),
           stream: true,
         }),
+        signal: req.signal,
       })
     : await fetch("https://api.kie.ai/claude/v1/messages", {
         method: "POST",
@@ -180,11 +191,13 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           model,
-          messages,
+          ...(claudeSystemPrompt ? { system: claudeSystemPrompt } : {}),
+          messages: claudeMessages,
           stream: true,
           thinkingFlag: true,
           max_tokens: 4096,
         }),
+        signal: req.signal,
       });
 
   if (!upstream.ok) {

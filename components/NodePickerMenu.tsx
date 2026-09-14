@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { useReactFlow, Node, Edge } from "@xyflow/react";
-import { useWorkflowStore, NodeData } from "@/lib/store";
+import { useReactFlow, Edge } from "@xyflow/react";
+import { useWorkflowStore } from "@/lib/store";
 import { edgeStyle, EDGE_COLORS } from "@/lib/edgeStyles";
 import { NODES, NODE_SIZE, FALLBACK_SIZE, NODE_META, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { VIDEO_MODELS, IMAGE_MODELS } from "@/lib/modelConfig";
@@ -35,7 +35,7 @@ function closestRatio(ratioFloat: number, candidates: string[]): string | null {
 // Node types whose OUTPUT can feed a given input handle
 function sourceNodeTypesFor(targetHandle: string | null): string[] {
   switch (targetHandle) {
-    case "prompt":                         return ["promptNode", "assistantNode", "promptComposerNode", "variableNode", "textContentNode"];
+    case "prompt":                         return ["promptNode", "assistantNode", "variableNode", "textContentNode", "promptComposerNode"];
     case "variables":                      return ["variableNode", "brandProfileNode", "styleProfileNode"];
     case "image":
     case "startFrame":
@@ -70,9 +70,15 @@ function inputHandleTopY(nodeType: string | undefined, handleId: string | null, 
     if (handleId === "image")  return nodeH - 52;
   }
   if (nodeType === "textRendererNode") {
-    if (handleId === "image") return nodeH * 0.35;
+    if (handleId === "image") return nodeH * 0.18;
+    if (handleId === "style") return nodeH * 0.31;
+    if (handleId === "variables") return nodeH * 0.44;
+    // Legacy saved workflows can retain a hidden text input edge.
     if (handleId === "text") return nodeH * 0.5;
-    if (handleId === "style") return nodeH * 0.65;
+  }
+  if (nodeType === "assistantNode") {
+    if (handleId === "variables") return nodeH * 0.26;
+    if (handleId === "prompt") return nodeH * 0.62;
   }
   if (nodeType === "copyComposerNode") {
     if (handleId === "text") return nodeH * 0.3;
@@ -97,10 +103,10 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   promptComposerNode: "COMPOSER",
   copyComposerNode:   "TEXT REFINER",
   textContentNode:    "TEXT CONTENT",
-  textRendererNode:   "TEXT RENDERER",
+  textRendererNode:   "TEXT OVERLAY",
   generateNode:       "IMAGE GEN",
   videoGeneratorNode: "VIDEO GEN",
-  assistantNode:      "ASSISTANT",
+  assistantNode:      "AI AGENT",
 };
 
 export interface DropState {
@@ -126,6 +132,11 @@ function targetHandleFor(
   sourceHandleId: string | null,
 ): string | null {
   if (targetNodeType === "promptComposerNode" && (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode")) return "variables";
+  if (targetNodeType === "assistantNode") {
+    if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode") return "variables";
+    if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "textContentNode" || sourceNodeType === "promptComposerNode") return "prompt";
+    return null;
+  }
   if (targetNodeType === "copyComposerNode") {
     if (sourceNodeType === "textContentNode") return "text";
     if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode") return "variables";
@@ -135,6 +146,7 @@ function targetHandleFor(
     if (sourceNodeType === "generateNode" || sourceNodeType === "imageInputNode" || sourceNodeType === "textRendererNode") return "image";
     if (sourceNodeType === "textContentNode" || sourceNodeType === "copyComposerNode") return "text";
     if (sourceNodeType === "styleProfileNode") return "style";
+    if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode") return "variables";
     return null;
   }
 

@@ -35,15 +35,15 @@ export const NODES: Array<{
     {
       type: "assistantNode",
       category: "generators",
-      canReceiveConnection: false,
+      canReceiveConnection: true,
       icon: (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
           <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
         </svg>
       ),
-      label: "Assistant",
-      description: "Text-to-text LLM node",
+      label: "AI Agent",
+      description: "LLM node — plain text or structured context, outputs a normal prompt",
     },
     {
       type: "videoGeneratorNode",
@@ -99,36 +99,12 @@ export const NODES: Array<{
       description: "Deterministic image style instructions",
     },
     {
-      type: "textContentNode",
-      category: "resources",
-      canReceiveConnection: false,
-      icon: <Type size={14} strokeWidth={1.5} />,
-      label: "Text Content",
-      description: "Structured overlay copy and claims",
-    },
-    {
       type: "textRendererNode",
       category: "generators",
       canReceiveConnection: true,
       icon: <Layers size={14} strokeWidth={1.5} />,
-      label: "Text Renderer",
-      description: "Render exact copy onto an image",
-    },
-    {
-      type: "promptComposerNode",
-      category: "resources",
-      canReceiveConnection: true,
-      icon: <Combine size={14} strokeWidth={1.5} />,
-      label: "Prompt Composer",
-      description: "AI visual prompt from structured context",
-    },
-    {
-      type: "copyComposerNode",
-      category: "resources",
-      canReceiveConnection: true,
-      icon: <PenLine size={14} strokeWidth={1.5} />,
-      label: "Text Refiner",
-      description: "Improve text, then require approval before rendering",
+      label: "Text Overlay",
+      description: "Editable copy + typography, optional AI refine & approve, then render",
     },
     {
       type: "promptNode",
@@ -196,7 +172,7 @@ export function getLastNodeSettings(
 
 // Rough pixel footprint per node type — used for placement + collision detection
 export const NODE_SIZE: Record<string, { w: number; h: number }> = {
-  assistantNode: { w: 280, h: 200 },
+  assistantNode: { w: 320, h: 300 },
   videoGeneratorNode: { w: 320, h: 220 }, // Safe default for 16:9 + controls
   generateNode: { w: 280, h: 280 },       // 1:1 default
   promptNode: { w: 520, h: 250 },
@@ -206,7 +182,7 @@ export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   brandProfileNode: { w: 330, h: 310 },
   styleProfileNode: { w: 360, h: 460 },
   textContentNode: { w: 330, h: 380 },
-  textRendererNode: { w: 330, h: 280 },
+  textRendererNode: { w: 380, h: 560 },
   promptComposerNode: { w: 420, h: 300 },
   copyComposerNode:   { w: 360, h: 360 },
 };

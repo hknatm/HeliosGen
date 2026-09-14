@@ -340,6 +340,43 @@ export const IMAGE_MODELS: ImageModel[] = [
       extra: { nsfw_checker: false },
     },
   },
+  // GPT Image 2.5 — ported exactly from upstream f4aae3f.
+  {
+    id: "gpt-image-2-5-flare",
+    apiId: "gpt-image-2-5-flare-image-to-image",
+    textOnlyApiId: "gpt-image-2-5-flare-text-to-image",
+    name: "GPT Image 2.5 Flare",
+    provider: "OpenAI",
+    ratios: ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9", "27:16", "16:27", "9:8", "8:9"],
+    supportsImages: true,
+    maxImages: 16,
+    supportsQuality: true,
+    apiInput: {
+      aspectRatioKey: "aspect_ratio",
+      imageInputKey: "input_urls",
+      qualityKey: "resolution",
+      qualityOptions: ["1k", "2k", "4k"],
+      promptMaxLength: 20000,
+    },
+  },
+  {
+    id: "gpt-image-2-5-sunburst",
+    apiId: "gpt-image-2-5-sunburst-image-to-image",
+    textOnlyApiId: "gpt-image-2-5-sunburst-text-to-image",
+    name: "GPT Image 2.5 Sunburst",
+    provider: "OpenAI",
+    ratios: ["auto", "1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9", "27:16", "16:27", "9:8", "8:9"],
+    supportsImages: true,
+    maxImages: 16,
+    supportsQuality: true,
+    apiInput: {
+      aspectRatioKey: "aspect_ratio",
+      imageInputKey: "input_urls",
+      qualityKey: "resolution",
+      qualityOptions: ["1k", "2k", "4k"],
+      promptMaxLength: 20000,
+    },
+  },
 ];
 
 // ── Video models ──────────────────────────────────────────────────────────────

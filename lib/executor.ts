@@ -142,21 +142,24 @@ export function resolveInputs(
     const src = nodes.find((n) => n.id === edge.source);
     if (!src) continue;
 
-    // Prompt sources
-    if (src.type === "promptNode") {
-      result.prompt = src.data.prompt as string | undefined;
-    }
-    if (src.type === "variableNode") {
-      result.prompt = src.data.variableValue as string | undefined;
-    }
-    if (src.type === "textContentNode" && edge.targetHandle === "prompt") {
-      result.prompt = textContentToPrompt(src.data.textContent);
-    }
-    if (src.type === "promptComposerNode") {
-      result.prompt = (src.data.resolvedPrompt ?? src.data.prompt) as string | undefined;
-    }
-    if (src.type === "assistantNode") {
-      result.prompt = src.data.outputText as string | undefined;
+    // Prompt sources. Typed context/image edges must never leak into the prompt;
+    // only the explicit prompt handle participates in text resolution.
+    if (edge.targetHandle === "prompt") {
+      if (src.type === "promptNode") {
+        result.prompt = src.data.prompt as string | undefined;
+      }
+      if (src.type === "variableNode") {
+        result.prompt = src.data.variableValue as string | undefined;
+      }
+      if (src.type === "textContentNode") {
+        result.prompt = textContentToPrompt(src.data.textContent);
+      }
+      if (src.type === "promptComposerNode") {
+        result.prompt = (src.data.resolvedPrompt ?? src.data.prompt) as string | undefined;
+      }
+      if (src.type === "assistantNode") {
+        result.prompt = src.data.outputText as string | undefined;
+      }
     }
 
     // "image" handle — multi-image input for generateNode (up to 14)

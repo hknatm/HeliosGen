@@ -21,7 +21,7 @@ import { useWorkflowStore, NodeData } from "@/lib/store";
 import { VIDEO_MODELS } from "@/lib/modelConfig";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 import { topoSort, resolveInputs } from "@/lib/executor";
-import { buildComposerContext, buildComposerTargetMedia, resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
+import { buildComposerContext, buildComposerTargetMedia, resolveComposerConnections, resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
 import { defaultStyleProfileJson } from "@/lib/profileNodes";
 import { NODE_SIZE, FALLBACK_SIZE, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
 import { edgeStyle } from "@/lib/edgeStyles";
@@ -29,8 +29,8 @@ import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 import { loadCustomProviderConfig } from "@/lib/customProvider";
-import { getSystemPrompt } from "@/lib/systemPrompt";
-import { hasRenderableText, rendererInputSignature, resolveTextRendererInputs } from "@/lib/textRendererSources";
+import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT, COPY_OUTPUT_CONTRACT, getSystemPrompt } from "@/lib/systemPrompt";
+import { hasRenderableText, rendererInputSignature, resolveTextRendererContent, resolveTextRendererInputs } from "@/lib/textRendererSources";
 import { buildCopyComposerPrompt, hasRefinedCopy, mergeRefinedCopy, parseCopyJson, rawCopySignature, resolveCopyComposerInputs, validateRefinedCopy } from "@/lib/copyComposer";
 import { loadTextFonts, resolveTextFont } from "@/lib/textFonts";
 import { loadTextRenderingSettings } from "@/lib/textRenderingSettings";
@@ -179,21 +179,21 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     promptNode: "TEXT",
     generateNode: "IMAGE GEN",
     videoGeneratorNode: "VIDEO GEN",
-    assistantNode: "ASSISTANT",
+    assistantNode: "AI AGENT",
     variableNode: "VARIABLE",
     brandProfileNode: "BRAND",
     styleProfileNode: "STYLE",
     textContentNode: "TEXT CONTENT",
-    textRendererNode: "TEXT RENDERER",
+    textRendererNode: "TEXT OVERLAY",
     promptComposerNode: "COMPOSER",
     copyComposerNode: "COPY COMPOSER",
   };
-  if (type === "assistantNode") return "ASSISTANT";
+  if (type === "assistantNode") return "AI AGENT";
   if (type === "variableNode") return `VARIABLE #${count}`;
   if (type === "brandProfileNode") return `BRAND #${count}`;
   if (type === "styleProfileNode") return `STYLE #${count}`;
   if (type === "textContentNode") return `TEXT CONTENT #${count}`;
-  if (type === "textRendererNode") return `TEXT RENDERER #${count}`;
+  if (type === "textRendererNode") return `TEXT OVERLAY #${count}`;
   if (type === "promptComposerNode") return `COMPOSER #${count}`;
   if (type === "copyComposerNode") return `COPY COMPOSER #${count}`;
   return `${names[type] ?? type} #${count}`;
@@ -1015,14 +1015,28 @@ export default function WorkflowCanvas() {
         source?.type !== "promptComposerNode"
       ) return false;
 
-      // Text Renderer accepts only an app image, structured Text Content, and Style Profile.
+      // Text Overlay accepts an app image, image-style, optional Variables/Brand
+      // context for AI copy refinement, and (legacy) structured Text Content.
       if (target?.type === "textRendererNode") {
         const validRendererSource =
           (connection.targetHandle === "image" && (source?.type === "generateNode" || source?.type === "imageInputNode" || source?.type === "textRendererNode")) ||
           (connection.targetHandle === "text" && (source?.type === "textContentNode" || source?.type === "copyComposerNode")) ||
-          (connection.targetHandle === "style" && source?.type === "styleProfileNode");
+          (connection.targetHandle === "style" && source?.type === "styleProfileNode") ||
+          (connection.targetHandle === "variables" && (source?.type === "variableNode" || source?.type === "brandProfileNode"));
         if (!validRendererSource) return false;
-        if (edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
+        if (connection.targetHandle !== "variables" && edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
+      }
+
+      // AI Agent accepts optional structured context (Variables / Style / Brand).
+      if (target?.type === "assistantNode") {
+        if (connection.targetHandle === "variables") {
+          return source?.type === "variableNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode";
+        }
+        if (connection.targetHandle === "prompt") {
+          if (source?.type !== "promptNode" && source?.type !== "assistantNode" && source?.type !== "variableNode" && source?.type !== "textContentNode" && source?.type !== "promptComposerNode") return false;
+          return !edges.some((edge) => edge.target === connection.target && edge.targetHandle === "prompt");
+        }
+        return false;
       }
 
       // Copy Composer takes one Text Content node (required) plus optional
@@ -1235,7 +1249,7 @@ export default function WorkflowCanvas() {
             body: JSON.stringify({
               prompt: buildComposerPrompt(comp.connectedValues, buildComposerTargetMedia(nodeId, fresh, edges)),
               model,
-              systemPrompt: getSystemPrompt("promptComposer"),
+              systemPrompt: buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT),
               ...(customProvider ? { customProvider } : {}),
             }),
           });
@@ -1324,7 +1338,7 @@ export default function WorkflowCanvas() {
             body: JSON.stringify({
               prompt: buildCopyComposerPrompt(copyInputs),
               model,
-              systemPrompt: getSystemPrompt("copyComposer"),
+              systemPrompt: buildAgentSystemPrompt(COPY_OUTPUT_CONTRACT),
               ...(customProvider ? { customProvider } : {}),
             }),
           });
@@ -1509,7 +1523,8 @@ export default function WorkflowCanvas() {
       if (node.type === "textRendererNode") {
         const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
         const rendererInputs = resolveTextRendererInputs(nodeId, fresh, edges);
-        if (!rendererInputs.imageUrl || !rendererInputs.content || !rendererInputs.composition || !hasRenderableText(rendererInputs.content)) {
+        const renderContent = resolveTextRendererContent(rendererInputs, node.data);
+        if (!rendererInputs.imageUrl || !renderContent || !rendererInputs.composition || !hasRenderableText(renderContent)) {
           updateNodeData(nodeId, { status: "error", errorMsg: "Connect an image, non-empty Text Content, and Image Style Profile text area." });
           push(`[${node.id}] skipped — missing image, text, or text area`, false);
           continue;
@@ -1522,14 +1537,14 @@ export default function WorkflowCanvas() {
         push(`[${node.id}] rendering text overlay…`);
         updateNodeData(nodeId, { status: "running", imageUrl: undefined, errorMsg: undefined, truncatedLines: 0, renderedInputSignature: undefined });
         try {
-          const font = resolveTextFont(loadTextFonts(), rendererInputs.content.fontFamily);
+          const font = resolveTextFont(loadTextFonts(), renderContent.fontFamily);
           const settings = loadTextRenderingSettings();
           const response = await fetch("/api/render-text", {
             method: "POST",
             headers: authHeaders(token),
             body: JSON.stringify({
               imageUrl: rendererInputs.imageUrl,
-              content: rendererInputs.content,
+              content: renderContent,
               composition: rendererInputs.composition,
               settings,
               ...(font?.familyKey ? { fontUrl: font.url, fontFamilyKey: font.familyKey } : {}),
@@ -1542,7 +1557,7 @@ export default function WorkflowCanvas() {
             imageUrl: result.imageUrl,
             errorMsg: undefined,
             truncatedLines: typeof result.truncatedLines === "number" ? result.truncatedLines : 0,
-            renderedInputSignature: rendererInputSignature(rendererInputs, settings, font?.url, font?.familyKey),
+            renderedInputSignature: rendererInputSignature({ ...rendererInputs, content: renderContent }, settings, font?.url, font?.familyKey),
           });
           push(`[${node.id}] done${result.truncatedLines ? ` — ${result.truncatedLines} line(s) clipped` : ""}`);
         } catch (e: unknown) {
@@ -1554,8 +1569,14 @@ export default function WorkflowCanvas() {
 
       // ── Assistant (text-to-text LLM) ────────────────────────────────────────
       if (node.type === "assistantNode") {
-        const upstream = resolveInputs(nodeId, nodes as Node<NodeData>[], edges);
-        const prompt = upstream.prompt ?? (node.data.localPrompt as string | undefined) ?? "";
+        const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
+        const upstream = resolveInputs(nodeId, fresh, edges);
+        const localPrompt = (node.data.localPrompt as string | undefined) ?? "";
+        const connectedValues = resolveComposerConnections(nodeId, fresh, edges);
+        const authoredPrompt = [upstream.prompt?.trim(), localPrompt.trim()].filter(Boolean).join("\n\n");
+        const prompt = connectedValues.length
+          ? buildComposerPrompt(connectedValues, undefined, authoredPrompt)
+          : authoredPrompt;
 
         if (!prompt.trim()) {
           push(`[${node.id}] skipped — prompt is empty`, false);
@@ -1580,7 +1601,9 @@ export default function WorkflowCanvas() {
             body: JSON.stringify({
               prompt,
               model,
-              systemPrompt: getSystemPrompt("workflowRun"),
+              systemPrompt: connectedValues.length
+                ? buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT)
+                : getSystemPrompt("agent"),
               ...(customProvider ? { customProvider } : {}),
             }),
           });

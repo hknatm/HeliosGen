@@ -1564,17 +1564,14 @@ interface TextPromptSpec {
 }
 
 const TEXT_PROMPT_SPECS: TextPromptSpec[] = [
-  { id: "chat", title: "Chat", description: "Used by the workspace chat and Quick Assist to craft better image/video prompts." },
-  { id: "assistantNode", title: "Assistant Node", description: "Used by the Assistant node to rewrite a prompt into a clearer, more effective version." },
-  { id: "workflowRun", title: "Workflow Run", description: "Used when rewriting a prompt during a workflow run." },
-  { id: "promptComposer", title: "Prompt Composer", description: "Sole prompt-policy control for the Prompt Composer node. Instructs the model how to turn the structured Variables / Style / Brand JSON context into a final image or video prompt." },
-  { id: "copyComposer", title: "Copy Composer", description: "Sole prompt-policy control for the Copy Composer node. Instructs the model how to refine the exact authored Text Content (plus optional Variables / Brand Context) into strict structured text JSON without inventing factual claims." },
+  { id: "agent", title: "AI Agent", description: "One reusable system prompt for every AI surface — workspace chat, Quick Assist, the AI Agent node, workflow-run rewrites, and the structured visual- and copy-composing instructions (whose output contracts stay code-owned)." },
 ];
 
 function TextPromptsPanel() {
   const [drafts, setDrafts] = useState<Record<SystemPromptId, string>>(() => loadSystemPrompts());
   const [savedFlash, setSavedFlash] = useState(false);
   const [resetFlash, setResetFlash] = useState(false);
+  const feedback = savedFlash ? "AI Agent prompt saved" : resetFlash ? "AI Agent prompt reset to default" : "";
 
   useEffect(() => {
     const refresh = () => setDrafts(loadSystemPrompts());
@@ -1632,11 +1629,13 @@ function TextPromptsPanel() {
                 {spec.title}
               </span>
             </div>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.5 }}>
+            <p id={`text-prompt-${spec.id}-description`} style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.5 }}>
               {spec.description}
             </p>
+            <label htmlFor={`text-prompt-${spec.id}`} className="sr-only">{spec.title} system prompt</label>
             <textarea
               id={`text-prompt-${spec.id}`}
+              aria-describedby={`text-prompt-${spec.id}-description`}
               value={drafts[spec.id]}
               onChange={(e) => setDrafts((prev) => ({ ...prev, [spec.id]: e.target.value }))}
               rows={5}
@@ -1665,6 +1664,7 @@ function TextPromptsPanel() {
 
       {/* Actions */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <span role="status" aria-live="polite" className="sr-only">{feedback}</span>
         <button
           id="text-prompts-save"
           onClick={handleSave}
@@ -1851,6 +1851,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const setKieKeySet    = useWorkflowStore((s) => s.setKieKeySet);
   const setAzureKeySet  = useWorkflowStore((s) => s.setAzureKeySet);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   async function authHeader(): Promise<Record<string, string>> {
     const { data: { session } } = await createClient().auth.getSession();
@@ -1893,11 +1896,28 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     refreshCodexStatus();
   }, [refreshCodexStatus]);
 
-  /* Close on Escape */
+  /* Dialog focus: enter on Close, trap Tab within Settings, restore opener. */
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = requestAnimationFrame(() => closeRef.current?.focus());
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handler);
+      openerRef.current?.focus();
+    };
   }, [onClose]);
 
   /* Close on backdrop click */
@@ -2008,6 +2028,10 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       {/* ── Modal shell ── */}
       <div
         id="settings-modal"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
         style={{
           position: "fixed",
           left: "50%",
@@ -2057,6 +2081,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               <button
                 key={item.id}
                 id={`settings-nav-${item.id}`}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => setActiveNav(item.id)}
                 style={{
                   display: "flex",
@@ -2117,7 +2142,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           >
             <button
               id="settings-close"
+              ref={closeRef}
               onClick={onClose}
+              aria-label="Close settings"
               title="Close (Esc)"
               style={{
                 display: "flex",

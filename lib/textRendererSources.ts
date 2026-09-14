@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { NodeData, TextContent } from "./store";
 import { parseStyleProfileObject, readStyleComposition, type StyleComposition } from "./styleComposition";
-import { rawCopySignature } from "./copyComposer";
+import { hasRefinedCopy, rawCopySignature } from "./copyComposer";
 import type { TextRenderingSettings } from "./textRenderingSettings";
 
 export interface TextRendererInputs {
@@ -33,13 +33,28 @@ function imageFromNode(node: Node<NodeData>): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+export function resolveTextRendererContent(inputs: TextRendererInputs, data: NodeData): TextContent | undefined {
+  const refined = data.refinedTextContent as TextContent | undefined;
+  if (
+    data.copyAccepted === true &&
+    refined &&
+    data.copyAcceptedRawSignature === rawCopySignature(inputs.content) &&
+    hasRefinedCopy(refined)
+  ) return refined;
+  return inputs.content;
+}
+
 /** Resolve only the deliberately typed inputs of a future deterministic text renderer. */
 export function resolveTextRendererInputs(
   rendererId: string,
   nodes: Node<NodeData>[],
   edges: Edge[],
 ): TextRendererInputs {
-  const inputs: TextRendererInputs = {};
+  const renderer = nodes.find((node) => node.id === rendererId);
+  const ownContent = validTextContent(renderer?.data.textContent);
+  const inputs: TextRendererInputs = {
+    ...(ownContent && hasRenderableText(ownContent) ? { content: ownContent, textSourceId: rendererId } : {}),
+  };
   for (const edge of edges.filter((item) => item.target === rendererId)) {
     const source = nodes.find((node) => node.id === edge.source);
     if (!source) continue;
@@ -48,7 +63,7 @@ export function resolveTextRendererInputs(
     }
     if (edge.targetHandle === "text" && source.type === "textContentNode") {
       const content = validTextContent(source.data.textContent);
-      if (content) {
+      if (!inputs.content && content) {
         inputs.content = content;
         inputs.textSourceId = source.id;
       }
@@ -58,7 +73,7 @@ export function resolveTextRendererInputs(
     // stale proposals never reach the Text Renderer.
     if (edge.targetHandle === "text" && source.type === "copyComposerNode" && copyComposerIsUsable(source, nodes)) {
       const content = validTextContent(source.data.refinedTextContent);
-      if (content) {
+      if (!inputs.content && content) {
         inputs.content = content;
         inputs.textSourceId = source.id;
       }

@@ -141,7 +141,7 @@ function filterKeys<T extends object>(obj: T, keys: (keyof T)[]): Partial<T> | n
 
 /** Human-readable label for each node type, including the counter */
 export function getNodeLabel(type: string, n: number): string {
-  if (type === "assistantNode") return "ASSISTANT";
+  if (type === "assistantNode") return "AI AGENT";
   const map: Record<string, string> = {
     promptNode:          `Text #${n}`,
     imageInputNode:      `Image #${n}`,
@@ -151,7 +151,7 @@ export function getNodeLabel(type: string, n: number): string {
     brandProfileNode:    `Brand #${n}`,
     styleProfileNode:    `Style #${n}`,
     textContentNode:     `Text Content #${n}`,
-    textRendererNode:    `Text Renderer #${n}`,
+    textRendererNode:    `Text Overlay #${n}`,
     promptComposerNode:  `Prompt Composer #${n}`,
     copyComposerNode:    `Copy Composer #${n}`,
   };

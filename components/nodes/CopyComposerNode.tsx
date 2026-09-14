@@ -16,7 +16,7 @@ import {
   validateRefinedCopy,
 } from "@/lib/copyComposer";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
-import { getSystemPrompt } from "@/lib/systemPrompt";
+import { buildAgentSystemPrompt, COPY_OUTPUT_CONTRACT } from "@/lib/systemPrompt";
 import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 
@@ -215,7 +215,7 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
         body: JSON.stringify({
           prompt: buildCopyComposerPrompt(inputs),
           model,
-          systemPrompt: getSystemPrompt("copyComposer"),
+          systemPrompt: buildAgentSystemPrompt(COPY_OUTPUT_CONTRACT),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
         signal: controller.signal,

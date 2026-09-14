@@ -128,7 +128,7 @@ export function QuickAssist() {
         body: JSON.stringify({
           model,
           messages: [
-            { role: "system", content: getSystemPrompt("chat") },
+            { role: "system", content: getSystemPrompt("agent") },
             ...newMessages.map(m => ({ role: m.role, content: m.content })),
           ],
           stream: true,

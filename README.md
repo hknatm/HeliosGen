@@ -102,7 +102,7 @@ You only pay for what you generate.
 # ⚡ Supported Models
 
 ## Images
-- GPT Image 2 (OpenAI)
+- GPT Image 2, GPT Image 2.5 Flare, GPT Image 2.5 Sunburst (OpenAI)
 - Nano Banana / Nano Banana 2 / Nano Banana 2 Lite / Nano Banana Pro (Google)
 - Seedream 5.0 Lite / Pro (Seedream)
 - Z-Image (Z-AI)

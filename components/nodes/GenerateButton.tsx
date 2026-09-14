@@ -30,11 +30,14 @@ export default function GenerateButton({ onClick, busy, disabled, extracting, wa
       style={{ position: "relative", flexShrink: 0 }}
       onMouseEnter={() => hasWarning && setTooltipVisible(true)}
       onMouseLeave={() => setTooltipVisible(false)}
+      onFocusCapture={() => hasWarning && setTooltipVisible(true)}
+      onBlurCapture={() => setTooltipVisible(false)}
     >
       <button
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         disabled={disabled || busy || extracting}
+        aria-label={hasWarning ? `Generate unavailable: ${warningMessages!.join("; ")}` : busy ? "Generating" : "Generate"}
         className="h-7 px-3 rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50 hover:brightness-110"
         style={{
           background: bg,

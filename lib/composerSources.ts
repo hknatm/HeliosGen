@@ -174,8 +174,10 @@ export function buildComposerTargetMedia(
 export function buildComposerPrompt(
   connectedValues: ResolvedWorkflowVariable[],
   target?: ComposerTargetMedia,
+  userPrompt?: string,
 ): string {
-  const context: ComposerContext & { target?: ComposerTargetMedia } = buildComposerContext(connectedValues);
+  const context: ComposerContext & { target?: ComposerTargetMedia; request?: string } = buildComposerContext(connectedValues);
   if (target) context.target = target;
+  if (userPrompt?.trim()) context.request = userPrompt.trim();
   return JSON.stringify(context, null, 2);
 }

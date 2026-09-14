@@ -7,7 +7,7 @@ import { NodeData, useWorkflowStore } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { buildComposerContext, buildComposerPrompt, buildComposerTargetMedia, resolveComposerConnections } from "@/lib/composerSources";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
-import { getSystemPrompt } from "@/lib/systemPrompt";
+import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT } from "@/lib/systemPrompt";
 import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 
@@ -150,7 +150,7 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
         body: JSON.stringify({
           prompt: buildComposerPrompt(connectedValues, targetMedia),
           model,
-          systemPrompt: getSystemPrompt("promptComposer"),
+          systemPrompt: buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
         signal: controller.signal,

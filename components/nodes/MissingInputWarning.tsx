@@ -9,16 +9,26 @@ export default function MissingInputWarning({ messages }: { messages: string[] }
     <div
       style={{
         position: "absolute",
-        top: -20,
-        right: 2,
+        top: -26,
+        right: -4,
         zIndex: 20,
         pointerEvents: "auto",
       }}
       onMouseEnter={() => setVisible(true)}
       onMouseLeave={() => setVisible(false)}
+      onFocus={() => setVisible(true)}
+      onBlur={() => setVisible(false)}
     >
       {/* Red triangle */}
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ display: "block", cursor: "default" }}>
+      <button
+        type="button"
+        aria-label={`Missing inputs: ${messages.join("; ")}`}
+        aria-expanded={visible}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => setVisible((current) => !current)}
+        style={{ display: "grid", placeItems: "center", width: 24, height: 24, padding: 0, border: 0, borderRadius: 4, background: "transparent" }}
+      >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block", cursor: "default" }}>
         <path
           d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
           fill="#ef4444"
@@ -26,6 +36,7 @@ export default function MissingInputWarning({ messages }: { messages: string[] }
         <line x1="12" y1="9" x2="12" y2="13" stroke="white" strokeWidth="2" strokeLinecap="round" />
         <line x1="12" y1="17" x2="12.01" y2="17" stroke="white" strokeWidth="2" strokeLinecap="round" />
       </svg>
+      </button>
 
       {/* Tooltip — opens downward, aligned to the right of the icon */}
       {visible && (
