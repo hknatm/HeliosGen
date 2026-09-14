@@ -10,6 +10,8 @@ import {
   hasRefinedCopy,
   mergeRefinedCopy,
   parseCopyJson,
+  copyDraftMatchesSource,
+  rawCopySignature,
   resolveCopyComposerInputs,
   validateRefinedCopy,
 } from "@/lib/copyComposer";
@@ -58,6 +60,7 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
 
   const [aiBusy, setAiBusy] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
   const busy = aiBusy || data.status === "running";
 
@@ -93,6 +96,45 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
   const refined = data.refinedTextContent as TextContent | undefined;
   const accepted = data.copyAccepted === true;
   const errorMsg = data.errorMsg as string | undefined;
+  const staleNote = data.staleCopyNote as string | undefined;
+
+  // Signatures of the authored source at draft/accept time. If the connected
+  // Text Content changes afterwards, the draft and/or acceptance are stale and
+  // must be invalidated — a proposal derived from old copy can never reach the
+  // Text Renderer (the renderer gate enforces this too; the UI explains why).
+  const rawSig = useMemo(() => rawCopySignature(raw), [raw]);
+  const draftSig = data.copyDraftRawSignature as string | undefined;
+  const acceptedSig = data.copyAcceptedRawSignature as string | undefined;
+  const draftIsCurrent = copyDraftMatchesSource(raw, draftSig);
+
+  useEffect(() => {
+    if (!rawSig) return;
+    if (accepted && acceptedSig && acceptedSig !== rawSig) {
+      updateNodeData(id, {
+        copyAccepted: false,
+        copyAcceptedRawSignature: undefined,
+        staleCopyNote: "Source text changed after approval — re-run to refresh the draft.",
+      });
+    } else if (refined && draftSig && draftSig !== rawSig) {
+      updateNodeData(id, {
+        refinedTextContent: undefined,
+        copyJson: "",
+        copyAccepted: false,
+        copyAcceptedRawSignature: undefined,
+        staleCopyNote: "Source text changed — re-run to refresh the draft.",
+      });
+    }
+  }, [accepted, acceptedSig, draftSig, id, rawSig, refined, updateNodeData]);
+
+  const changedBlocks = useMemo(() => {
+    if (!raw || !refined) return 0;
+    let count = 0;
+    for (const field of ["eyebrow", "title", "subtitle", "cta"] as const) {
+      if ((raw[field] ?? "") !== (refined[field] ?? "")) count++;
+    }
+    if (JSON.stringify(raw.bullets) !== JSON.stringify(refined.bullets)) count++;
+    return count;
+  }, [raw, refined]);
 
   useEffect(() => {
     if (!selected || !cardRef.current) return;
@@ -149,6 +191,7 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
     abortRef.current = controller;
 
     setAiBusy(true);
+    setShowOriginal(false);
     // Clear any previous result up front so a stale/older output can never leak.
     updateNodeData(id, {
       status: "running",
@@ -156,6 +199,9 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
       copyJson: "",
       refinedTextContent: undefined,
       copyAccepted: false,
+      copyDraftRawSignature: undefined,
+      copyAcceptedRawSignature: undefined,
+      staleCopyNote: undefined,
     });
 
     try {
@@ -245,6 +291,8 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
         copyJson: accumulated,
         refinedTextContent: merged,
         copyAccepted: false,
+        copyDraftRawSignature: rawCopySignature(raw),
+        copySourceId: inputs.textSourceId,
         errorMsg: undefined,
       });
     } catch (e: unknown) {
@@ -275,9 +323,20 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
   }, [id, updateNodeData]);
 
   const handleAccept = useCallback(() => {
-    if (!refined || !hasRefinedCopy(refined) || readOnly) return;
-    updateNodeData(id, { copyAccepted: true, errorMsg: undefined });
-  }, [id, readOnly, refined, updateNodeData]);
+    const currentRawSignature = rawCopySignature(raw);
+    if (!refined || !hasRefinedCopy(refined) || readOnly || !currentRawSignature) return;
+    // A draft is reviewable only against the exact source that produced it.
+    // Never let re-approval relabel stale copy as if it came from new source text.
+    if (!copyDraftMatchesSource(raw, draftSig)) {
+      updateNodeData(id, {
+        copyAccepted: false,
+        copyAcceptedRawSignature: undefined,
+        staleCopyNote: "Source text changed — re-run to refresh the draft before approving it.",
+      });
+      return;
+    }
+    updateNodeData(id, { copyAccepted: true, copyAcceptedRawSignature: currentRawSignature, staleCopyNote: undefined });
+  }, [draftSig, id, raw, readOnly, refined, updateNodeData]);
 
   const handleReject = useCallback(() => {
     if (readOnly) return;
@@ -408,12 +467,24 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
 
         {/* Output panel */}
         <div style={{ borderRadius: 7, padding: "8px 9px", background: "rgba(255,255,255,0.035)", border: `1px solid ${busy ? "rgba(167,139,250,0.4)" : errorMsg ? "rgba(248,113,113,0.4)" : accepted ? "rgba(74,222,128,0.4)" : "rgba(255,255,255,0.08)"}` }}>
-          <div style={{ color: busy ? "#c4b5fd" : errorMsg ? "#f87171" : accepted ? "#86efac" : "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", marginBottom: 4 }}>
-            {busy ? "IMPROVING…" : errorMsg ? "TEXT REFINEMENT FAILED" : accepted ? "APPROVED TEXT" : "DRAFT TEXT"}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+            <span style={{ color: busy ? "#c4b5fd" : errorMsg ? "#f87171" : accepted ? "#86efac" : "rgba(255,255,255,0.42)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em" }}>
+              {busy ? "IMPROVING…" : errorMsg ? "TEXT REFINEMENT FAILED" : accepted ? "APPROVED TEXT" : "DRAFT TEXT"}
+            </span>
+            {refined && hasRefinedCopy(refined) && !busy && !errorMsg && (
+              <button
+                type="button"
+                onMouseDown={buttonMouseDown}
+                onClick={(e) => { e.stopPropagation(); setShowOriginal((v) => !v); }}
+                style={{ border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", color: showOriginal ? "#c4b5fd" : "rgba(255,255,255,0.55)", borderRadius: 5, padding: "2px 7px", fontSize: 9, fontWeight: 600, cursor: "pointer" }}
+              >{showOriginal ? "Show draft" : "Compare with original"}</button>
+            )}
           </div>
           <div style={{ color: "rgba(255,255,255,0.78)", fontSize: 11, lineHeight: 1.45, whiteSpace: "pre-wrap", maxHeight: 64, overflow: "auto" }}>
             {refined && hasRefinedCopy(refined)
-              ? [refined.eyebrow, refined.title, refined.subtitle, ...refined.bullets, refined.cta].filter((v) => v.trim()).join("\n")
+              ? (showOriginal
+                  ? [raw?.eyebrow, raw?.title, raw?.subtitle, ...(raw?.bullets ?? []), raw?.cta].filter((v) => v?.trim()).join("\n")
+                  : [refined.eyebrow, refined.title, refined.subtitle, ...refined.bullets, refined.cta].filter((v) => v.trim()).join("\n"))
               : (errorMsg ? "No text was produced. Nothing is exposed downstream." : "Your refined text proposal will appear here.")}
           </div>
           {refined && hasRefinedCopy(refined) && !readOnly && (
@@ -429,18 +500,23 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
                 <button
                   id={`copy-composer-accept-${id}`}
                   type="button"
+                  disabled={!draftIsCurrent}
+                  title={!draftIsCurrent ? "Re-run the Text Refiner after changing source text" : undefined}
                   onMouseDown={buttonMouseDown}
                   onClick={(e) => { e.stopPropagation(); handleAccept(); }}
-                  style={{ border: "1px solid rgba(74,222,128,0.4)", color: "#86efac", background: "rgba(74,222,128,0.14)", borderRadius: 6, padding: "4px 9px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}
+                  style={{ border: "1px solid rgba(74,222,128,0.4)", color: draftIsCurrent ? "#86efac" : "rgba(255,255,255,0.3)", background: draftIsCurrent ? "rgba(74,222,128,0.14)" : "rgba(255,255,255,0.04)", borderRadius: 6, padding: "4px 9px", fontSize: 10, fontWeight: 600, cursor: draftIsCurrent ? "pointer" : "not-allowed" }}
                 >Approve text</button>
               )}
-              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, alignSelf: "center" }}>{proposedBlocks} blocks</span>
+              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, alignSelf: "center" }}>{proposedBlocks} blocks · {changedBlocks} changed</span>
             </div>
           )}
           {errorMsg && (
             <div style={{ marginTop: 4, color: "#f87171", fontSize: 10 }}>{errorMsg.slice(0, 140)}</div>
           )}
         </div>
+        {staleNote && (
+          <div role="status" aria-live="polite" style={{ borderRadius: 6, padding: "6px 8px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24", fontSize: 10, lineHeight: 1.4 }}>{staleNote}</div>
+        )}
       </div>
       <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(30% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>TEXT</span>
       <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(50% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>CONTEXT</span>

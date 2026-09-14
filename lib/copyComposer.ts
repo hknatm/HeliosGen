@@ -184,6 +184,21 @@ export function hasRefinedCopy(content: TextContent | undefined): boolean {
     .some((value) => value.trim().length > 0);
 }
 
+/**
+ * Stable signature of the authored copy fields. Used to detect source edits
+ * after a draft was produced or approved, so a stale acceptance can never
+ * feed the Text Renderer.
+ */
+export function rawCopySignature(content: TextContent | undefined): string {
+  if (!content) return "";
+  return JSON.stringify([content.eyebrow, content.title, content.subtitle, content.bullets, content.cta]);
+}
+
+/** A draft can only be approved while it still corresponds to its source text. */
+export function copyDraftMatchesSource(content: TextContent | undefined, draftSignature: unknown): boolean {
+  return typeof draftSignature === "string" && draftSignature === rawCopySignature(content);
+}
+
 export interface CopyValidation {
   ok: boolean;
   warnings: string[];

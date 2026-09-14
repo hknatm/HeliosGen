@@ -77,4 +77,5 @@ public/generated/
 /outputs/
 /tmp/
 *.log
+.test-dist/
 !/public/generated/.gitkeep

@@ -112,6 +112,7 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
         placeholder={placeholder}
         aria-label={`Text content ${label.toLowerCase()}`}
         rows={rows}
+        maxLength={500}
         onMouseDown={fieldMouseDown}
         className="nodrag"
         onChange={(event) => save({ [key]: event.target.value })}
@@ -155,13 +156,14 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 9, fontWeight: 700, letterSpacing: "0.07em" }}>BULLET POINTS</span>
             {content.bullets.map((bullet, index) => (
-              <div key={`${index}-${bullet.slice(0, 12)}`} style={{ display: "flex", gap: 6 }}>
+              <div key={index} style={{ display: "flex", gap: 6 }}>
                 <textarea
                   value={bullet}
                   disabled={readOnly}
                   placeholder="Premium K9 crystal for memorable gifting"
                   aria-label={`Bullet point ${index + 1}`}
                   rows={2}
+                  maxLength={500}
                   onMouseDown={fieldMouseDown}
                   className="nodrag"
                   onChange={(event) => {

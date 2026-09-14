@@ -6,7 +6,7 @@ import type { TextRenderingSettings } from "./textRenderingSettings";
 import { fontFormatFromUrl } from "./textFonts";
 
 const MAX_SOURCE_BYTES = 30 * 1024 * 1024;
-const LOCAL_GENERATED_PATH = /^\/generated\/([a-z0-9_-]+)\/([a-z0-9-]+\.(?:png|jpe?g|webp|gif|ttf|otf|woff2?))$/i;
+const LOCAL_GENERATED_PATH = /^\/generated\/([a-z0-9_-]+)(?:\/([a-z0-9][a-z0-9-]{0,79}))?\/([a-z0-9-]+\.(?:png|jpe?g|webp|gif|ttf|otf|woff2?))$/i;
 
 function xml(value: string): string {
   return value.replace(/[<>&"']/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[char]!);
@@ -19,9 +19,10 @@ function appOwnedPath(url: string, folder?: string): string | null {
   const pathname = url.split(/[?#]/, 1)[0];
   const match = LOCAL_GENERATED_PATH.exec(pathname);
   if (!match || (folder && match[1] !== folder)) return null;
-  // Both path segments are strictly allowlisted above, so this cannot escape
+  // Every path segment is strictly allowlisted above, so this cannot escape
   // public/generated even though the filename originates from an asset URL.
-  return `${process.cwd()}/public/generated/${match[1]}/${match[2]}`;
+  const [, resolvedFolder, subfolder, filename] = match;
+  return `${process.cwd()}/public/generated/${resolvedFolder}${subfolder ? `/${subfolder}` : ""}/${filename}`;
 }
 
 function isR2Asset(url: string): boolean {
@@ -33,10 +34,10 @@ async function ownedBuffer(url: string, folder?: string): Promise<Buffer> {
   const local = appOwnedPath(url, folder);
   if (local) return readFile(local);
   if (!isR2Asset(url)) throw new Error("Source asset must be stored by HeliosGen");
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error("Unable to load stored asset");
   const length = Number(response.headers.get("content-length") ?? 0);
-  if (length > MAX_SOURCE_BYTES) throw new Error("Source asset exceeds 30 MB");
+  if (!Number.isFinite(length) || length > MAX_SOURCE_BYTES) throw new Error("Source asset exceeds 30 MB");
   const buffer = Buffer.from(await response.arrayBuffer());
   if (buffer.length > MAX_SOURCE_BYTES) throw new Error("Source asset exceeds 30 MB");
   return buffer;
@@ -71,8 +72,15 @@ export interface TextRenderRequest {
   fontUrl?: string;
 }
 
+export interface TextRenderResult {
+  buffer: Buffer;
+  mime: string;
+  /** Number of text lines dropped because they did not fit the reserved copy zone. */
+  truncatedLines: number;
+}
+
 /** Render a constrained, deterministic SVG text overlay with Sharp. */
-export async function renderTextOverlay(input: TextRenderRequest): Promise<{ buffer: Buffer; mime: string }> {
+export async function renderTextOverlay(input: TextRenderRequest): Promise<TextRenderResult> {
   const image = await ownedBuffer(input.imageUrl);
   const source = sharp(image).rotate();
   const metadata = await source.metadata();
@@ -96,22 +104,29 @@ export async function renderTextOverlay(input: TextRenderRequest): Promise<{ buf
   const maxTitleChars = Math.max(10, Math.floor(zoneWidth / Math.max(1, titleSize * 0.55)));
   const maxBodyChars = Math.max(16, Math.floor(zoneWidth / Math.max(1, bodySize * 0.52)));
   let cursor = y + titleSize;
+  let truncatedLines = 0;
   const pieces: string[] = [];
   const addLines = (lines: string[], size: number, lineHeight: number, fill: string, weight = 400, gap = 0) => {
     const visibleLines = lines.filter((_, index) => cursor + index * lineHeight <= zoneBottom);
     if (visibleLines.length) pieces.push(lineElements(visibleLines, textX, cursor, size, lineHeight, fill, anchor, weight));
+    // Lines that do not fit the reserved zone are dropped, not stretched or
+    // reflowed — and the caller is told exactly how many so the UI can warn.
+    truncatedLines += lines.length - visibleLines.length;
     cursor += lines.length * lineHeight + gap;
-    return visibleLines.length === lines.length;
   };
   if (input.content.eyebrow.trim()) addLines(wrap(input.content.eyebrow, maxBodyChars, 1), Math.round(bodySize * 0.72), bodySize, accentColor, 700, Math.round(bodySize * 0.8));
   if (input.content.title.trim()) addLines(wrap(input.content.title, maxTitleChars, 3), titleSize, Math.round(titleSize * 1.08), textColor, 700, Math.round(bodySize * 0.6));
   if (input.content.subtitle.trim()) addLines(wrap(input.content.subtitle, maxBodyChars, 3), bodySize, Math.round(bodySize * 1.4), textColor, 400, Math.round(bodySize * 0.5));
   for (const bullet of input.content.bullets.slice(0, 5)) {
-    if (bullet.trim() && cursor <= zoneBottom) addLines(wrap(`• ${bullet}`, maxBodyChars, 2), Math.round(bodySize * 0.9), Math.round(bodySize * 1.3), textColor);
+    if (bullet.trim()) addLines(wrap(`• ${bullet}`, maxBodyChars, 2), Math.round(bodySize * 0.9), Math.round(bodySize * 1.3), textColor);
   }
-  if (input.content.cta.trim() && cursor + Math.round(bodySize * 0.5) <= zoneBottom) {
-    cursor += Math.round(bodySize * 0.5);
-    addLines(wrap(input.content.cta, maxBodyChars, 1), bodySize, bodySize, accentColor, 700);
+  if (input.content.cta.trim()) {
+    if (cursor + Math.round(bodySize * 0.5) <= zoneBottom) {
+      cursor += Math.round(bodySize * 0.5);
+      addLines(wrap(input.content.cta, maxBodyChars, 1), bodySize, bodySize, accentColor, 700);
+    } else {
+      truncatedLines += 1;
+    }
   }
   // Sharp/librsvg resolves embedded data reliably across local and R2-backed
   // deployments; never let user-controlled SVG fetch a URL itself.
@@ -124,6 +139,6 @@ export async function renderTextOverlay(input: TextRenderRequest): Promise<{ buf
   const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><style>${fontFace}text{font-family:'${family}',Arial,sans-serif;}</style>${pieces.join("")}</svg>`;
   const composed = source.composite([{ input: Buffer.from(svg), top: 0, left: 0 }]);
   return input.settings.outputFormat === "webp"
-    ? { buffer: await composed.webp({ quality: 92 }).toBuffer(), mime: "image/webp" }
-    : { buffer: await composed.png().toBuffer(), mime: "image/png" };
+    ? { buffer: await composed.webp({ quality: 92 }).toBuffer(), mime: "image/webp", truncatedLines }
+    : { buffer: await composed.png().toBuffer(), mime: "image/png", truncatedLines };
 }

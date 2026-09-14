@@ -248,6 +248,9 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
               <button
                 type="button"
                 disabled={busy}
+                aria-haspopup="listbox"
+                aria-expanded={modelOpen}
+                onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setModelOpen(false); } }}
                 onMouseDown={buttonMouseDown}
                 onClick={(e) => { e.stopPropagation(); if (!busy) setModelOpen((o) => !o); }}
                 style={{ display: "flex", alignItems: "center", gap: 3, border: "1px solid rgba(244,114,182,0.24)", background: "rgba(244,114,182,0.12)", color: "#f9a8d4", padding: "3px 7px", borderRadius: 5, fontSize: 10, fontWeight: 600, cursor: busy ? "default" : "pointer" }}
@@ -258,11 +261,13 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
                 </svg>
               </button>
               {modelOpen && (
-                <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "170px", background: "#111622", border: "1px solid #1E2840", borderRadius: "8px", overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,0.6)", zIndex: 1001 }}>
+                <div role="listbox" aria-label="Prompt Composer model" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setModelOpen(false); } }} style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "170px", background: "#111622", border: "1px solid #1E2840", borderRadius: "8px", overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,0.6)", zIndex: 1001 }}>
                   {modelOptions.map((m) => (
                     <button
                       key={m.id}
                       type="button"
+                      role="option"
+                      aria-selected={model === m.id}
                       onMouseDown={buttonMouseDown}
                       onClick={(e) => { e.stopPropagation(); updateNodeData(id, { composerModel: m.id }); setModelOpen(false); }}
                       style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: "none", background: "transparent", fontSize: 11, color: model === m.id ? "#fff" : "rgba(255,255,255,0.6)", cursor: "pointer" }}

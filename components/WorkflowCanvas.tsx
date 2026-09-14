@@ -30,8 +30,8 @@ import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 import { loadCustomProviderConfig } from "@/lib/customProvider";
 import { getSystemPrompt } from "@/lib/systemPrompt";
-import { hasRenderableText, resolveTextRendererInputs } from "@/lib/textRendererSources";
-import { buildCopyComposerPrompt, hasRefinedCopy, mergeRefinedCopy, parseCopyJson, resolveCopyComposerInputs, validateRefinedCopy } from "@/lib/copyComposer";
+import { hasRenderableText, rendererInputSignature, resolveTextRendererInputs } from "@/lib/textRendererSources";
+import { buildCopyComposerPrompt, hasRefinedCopy, mergeRefinedCopy, parseCopyJson, rawCopySignature, resolveCopyComposerInputs, validateRefinedCopy } from "@/lib/copyComposer";
 import { loadTextFonts, resolveTextFont } from "@/lib/textFonts";
 import { loadTextRenderingSettings } from "@/lib/textRenderingSettings";
 
@@ -1303,7 +1303,17 @@ export default function WorkflowCanvas() {
         }
 
         push(`[${node.id}] composing copy with AI…`);
-        updateNodeData(nodeId, { status: "running", errorMsg: undefined, copyJson: "", refinedTextContent: undefined, copyAccepted: false });
+        updateNodeData(nodeId, {
+          status: "running",
+          errorMsg: undefined,
+          copyJson: "",
+          refinedTextContent: undefined,
+          copyAccepted: false,
+          copyDraftRawSignature: undefined,
+          copyAcceptedRawSignature: undefined,
+          copySourceId: undefined,
+          staleCopyNote: undefined,
+        });
 
         try {
           const model = (node.data.copyModel as string | undefined) ?? "claude-sonnet-4-6";
@@ -1376,6 +1386,10 @@ export default function WorkflowCanvas() {
             copyJson: accumulated,
             refinedTextContent: merged,
             copyAccepted: false,
+            copyDraftRawSignature: rawCopySignature(copyInputs.raw),
+            copyAcceptedRawSignature: undefined,
+            copySourceId: copyInputs.textSourceId,
+            staleCopyNote: undefined,
             errorMsg: undefined,
           });
           push(`[${node.id}] done — accept the copy before the Text Renderer uses it`);
@@ -1506,9 +1520,10 @@ export default function WorkflowCanvas() {
           continue;
         }
         push(`[${node.id}] rendering text overlay…`);
-        updateNodeData(nodeId, { status: "running", imageUrl: undefined, errorMsg: undefined });
+        updateNodeData(nodeId, { status: "running", imageUrl: undefined, errorMsg: undefined, truncatedLines: 0, renderedInputSignature: undefined });
         try {
           const font = resolveTextFont(loadTextFonts(), rendererInputs.content.fontFamily);
+          const settings = loadTextRenderingSettings();
           const response = await fetch("/api/render-text", {
             method: "POST",
             headers: authHeaders(token),
@@ -1516,14 +1531,20 @@ export default function WorkflowCanvas() {
               imageUrl: rendererInputs.imageUrl,
               content: rendererInputs.content,
               composition: rendererInputs.composition,
-              settings: loadTextRenderingSettings(),
-              ...(font ? { fontUrl: font.url } : {}),
+              settings,
+              ...(font?.familyKey ? { fontUrl: font.url, fontFamilyKey: font.familyKey } : {}),
             }),
           });
-          const result = await response.json().catch(() => ({})) as { imageUrl?: string; error?: string };
+          const result = await response.json().catch(() => ({})) as { imageUrl?: string; error?: string; truncatedLines?: number };
           if (!response.ok || !result.imageUrl) throw new Error(result.error ?? "Text render failed");
-          updateNodeData(nodeId, { status: "done", imageUrl: result.imageUrl, errorMsg: undefined });
-          push(`[${node.id}] done`);
+          updateNodeData(nodeId, {
+            status: "done",
+            imageUrl: result.imageUrl,
+            errorMsg: undefined,
+            truncatedLines: typeof result.truncatedLines === "number" ? result.truncatedLines : 0,
+            renderedInputSignature: rendererInputSignature(rendererInputs, settings, font?.url, font?.familyKey),
+          });
+          push(`[${node.id}] done${result.truncatedLines ? ` — ${result.truncatedLines} line(s) clipped` : ""}`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           updateNodeData(nodeId, { status: "error", errorMsg: msg });

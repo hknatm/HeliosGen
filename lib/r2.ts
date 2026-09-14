@@ -44,13 +44,17 @@ function ext(contentType: string): string {
 export async function uploadBuffer(
   buffer: Buffer,
   contentType: string,
-  folder: string
+  folder: string,
+  options: { deduplicate?: boolean } = {},
 ): Promise<string> {
-  if (GUEST_MODE) return localStore.uploadBuffer(buffer, contentType, folder);
+  if (GUEST_MODE) return localStore.uploadBuffer(buffer, contentType, folder, options);
   buffer = await stripMetadata(buffer, contentType);
+  const deduplicate = options.deduplicate !== false;
   const hash = hashBuffer(buffer);
-  const cached = await lookupAssetHash(hash);
-  if (cached) return cached;
+  if (deduplicate) {
+    const cached = await lookupAssetHash(hash);
+    if (cached) return cached;
+  }
 
   const key = `${folder}/${randomUUID()}.${ext(contentType)}`;
   const url = cdnUrl(key);
@@ -65,10 +69,12 @@ export async function uploadBuffer(
   );
 
   // Store hash and wait for it
-  try {
-    await storeAssetHash(hash, url, contentType, buffer.byteLength);
-  } catch (err) {
-    console.error("[r2] Failed to store asset hash:", err);
+  if (deduplicate) {
+    try {
+      await storeAssetHash(hash, url, contentType, buffer.byteLength);
+    } catch (err) {
+      console.error("[r2] Failed to store asset hash:", err);
+    }
   }
 
   return url;

@@ -4,6 +4,7 @@ import { uploadBuffer } from "@/lib/r2";
 import { GUEST_MODE, resolveUserId } from "@/lib/guestMode";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import * as guestDb from "@/lib/guest/db";
+import { fontFamilyKey, isBuiltInFontFamily } from "@/lib/textFonts";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -48,7 +49,13 @@ export async function POST(req: NextRequest) {
     if (!hasExpectedFontSignature(bytes, type.format)) return NextResponse.json({ error: "The selected file is not a valid font of the declared type" }, { status: 415 });
 
     const fontId = crypto.randomUUID();
-    const url = await uploadBuffer(bytes, type.mime, "fonts");
+    const family = familyFromFilename(rawFile.name);
+    const familyKey = fontFamilyKey(family);
+    if (!familyKey) return NextResponse.json({ error: "The font filename must contain at least one letter or number" }, { status: 400 });
+    if (isBuiltInFontFamily(family)) return NextResponse.json({ error: `${family} is built in; rename the font file before uploading it` }, { status: 400 });
+    // Fonts are bound to their selected family by their private storage path;
+    // never deduplicate across users, or an existing public URL could be reused.
+    const url = await uploadBuffer(bytes, type.mime, `fonts/${familyKey}`, { deduplicate: false });
 
     // Record it as an upload for durable ownership/audit. Font metadata itself is
     // browser/server-settings state, keeping the existing no-migration model.
@@ -62,7 +69,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       font: {
         id: fontId,
-        family: familyFromFilename(rawFile.name),
+        family,
+        familyKey,
         url,
         format: type.format,
         source: "uploaded",

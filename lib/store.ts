@@ -75,6 +75,18 @@ export interface NodeData extends Record<string, unknown> {
   copyModel?: string;
   /** True only after the user explicitly accepts the proposed copy. */
   copyAccepted?: boolean;
+  /** Signature of the authored source when the draft was produced (stale detection). */
+  copyDraftRawSignature?: string;
+  /** Signature of the authored source when the copy was accepted (stale detection). */
+  copyAcceptedRawSignature?: string;
+  /** Id of the Text Content node the Copy Composer derived its copy from. */
+  copySourceId?: string;
+  /** User-facing note explaining why a draft/acceptance was invalidated. */
+  staleCopyNote?: string;
+  /** Text lines clipped by the Text Renderer because they did not fit the copy zone. */
+  truncatedLines?: number;
+  /** Signature of the inputs the last successful render was produced from. */
+  renderedInputSignature?: string;
   // generate node
   mode?: GenerateMode;
   model?: string;

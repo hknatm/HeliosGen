@@ -5,7 +5,7 @@ import { GUEST_MODE, resolveUserId } from "@/lib/guestMode";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import * as guestDb from "@/lib/guest/db";
 import { normalizeTextRenderingSettings } from "@/lib/textRenderingSettings";
-import { isAppOwnedFontUrl } from "@/lib/textFonts";
+import { familyKeyFromFontUrl, fontFamilyKey, isAppOwnedFontUrl, isBuiltInFontFamily } from "@/lib/textFonts";
 import { normalizeStyleComposition } from "@/lib/styleComposition";
 
 export const runtime = "nodejs";
@@ -47,15 +47,31 @@ export async function POST(req: NextRequest) {
     }
     const settings = normalizeTextRenderingSettings(body.settings);
     const composition = normalizeStyleComposition(body.composition);
-    const fontUrl = typeof body.fontUrl === "string" && isAppOwnedFontUrl(body.fontUrl) ? body.fontUrl : undefined;
-    const { buffer, mime } = await renderTextOverlay({
+    let fontUrl = typeof body.fontUrl === "string" && isAppOwnedFontUrl(body.fontUrl) ? body.fontUrl : undefined;
+    // Only a newly uploaded font URL that embeds the selected family key may
+    // define an @font-face. Built-in families always use the renderer's system
+    // font, so a caller cannot smuggle another uploaded font in as “Arial”.
+    const expectedFamilyKey = fontFamilyKey(content.fontFamily);
+    const suppliedFamilyKey = typeof body.fontFamilyKey === "string" ? body.fontFamilyKey : undefined;
+    if (
+      !fontUrl ||
+      isBuiltInFontFamily(content.fontFamily) ||
+      !expectedFamilyKey ||
+      suppliedFamilyKey !== expectedFamilyKey ||
+      familyKeyFromFontUrl(fontUrl) !== expectedFamilyKey
+    ) {
+      fontUrl = undefined;
+    }
+    const { buffer, mime, truncatedLines } = await renderTextOverlay({
       imageUrl: body.imageUrl,
       content,
       composition,
       settings,
       fontUrl,
     });
-    const imageUrl = await uploadBuffer(buffer, mime, "rendered");
+    // A rendered asset belongs to this user even when its pixel data matches a
+    // prior render, so never reuse a cached URL owned by somebody else.
+    const imageUrl = await uploadBuffer(buffer, mime, "rendered", { deduplicate: false });
     // A rendered asset is a durable new image, not a mutation of its source.
     // Keep it visible in the existing gallery just like a user-uploaded asset.
     if (GUEST_MODE) {
@@ -64,7 +80,7 @@ export async function POST(req: NextRequest) {
       const { error } = await supabaseAdmin.from("user_uploads").insert({ user_id: userId, r2_url: imageUrl, mime_type: mime, source: "text_render" });
       if (error) throw new Error(error.message);
     }
-    return NextResponse.json({ imageUrl, mime });
+    return NextResponse.json({ imageUrl, mime, truncatedLines });
   } catch (error: unknown) {
     // Keep operational filesystem/storage details in server logs, not API responses.
     console.error("Text render failed", error);

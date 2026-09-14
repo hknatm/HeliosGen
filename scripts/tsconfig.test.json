@@ -6,7 +6,7 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "outDir": ".test-dist",
+    "outDir": "../.test-dist",
     "rootDir": "..",
     "types": ["node"]
   },
@@ -25,6 +25,7 @@
     "test-workflow-variables.ts",
     "test-composer.ts",
     "test-text-renderer.ts",
-    "test-copy-composer.ts"
+    "test-copy-composer.ts",
+    "test-render-e2e.ts"
   ]
 }

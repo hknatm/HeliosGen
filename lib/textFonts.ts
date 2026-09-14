@@ -4,6 +4,7 @@ export const TEXT_FONTS_CHANGED_EVENT = "aiui-text-fonts-changed";
 export interface TextFont {
   id: string;
   family: string;
+  familyKey: string;
   url: string;
   format: "ttf" | "otf" | "woff" | "woff2";
   source: "uploaded";
@@ -23,14 +24,24 @@ function parseFont(value: unknown): TextFont | null {
     (font.format !== "ttf" && font.format !== "otf" && font.format !== "woff" && font.format !== "woff2") ||
     typeof font.createdAt !== "number" || !Number.isFinite(font.createdAt)
   ) return null;
-  return { id: font.id, family: font.family.trim(), url: font.url, format: font.format, source: "uploaded", createdAt: font.createdAt };
+  const family = font.family.trim();
+  // Older locally saved descriptors lack familyKey; they remain selectable but
+  // do not become renderable until re-uploaded through the bound URL format.
+  const familyKey = typeof font.familyKey === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(font.familyKey)
+    ? font.familyKey
+    : "";
+  return { id: font.id, family, familyKey, url: font.url, format: font.format, source: "uploaded", createdAt: font.createdAt };
 }
 
 export function isAppOwnedFontUrl(url: string): boolean {
-  if (/^\/generated\/fonts\/[a-z0-9-]+\.(ttf|otf|woff|woff2)$/i.test(url)) return true;
+  // New uploads encode a normalized family key in the folder so the rendering
+  // route can verify the selected family without trusting a client descriptor.
+  // Keep the former single-segment form readable for existing saved settings.
+  const fontPath = /^\/generated\/fonts\/(?:[a-z0-9][a-z0-9-]{0,79}\/)?[a-z0-9-]+\.(ttf|otf|woff|woff2)$/i;
+  if (fontPath.test(url)) return true;
   try {
     const parsed = new URL(url);
-    if (!/\/fonts\/[a-z0-9-]+\.(ttf|otf|woff|woff2)$/i.test(parsed.pathname)) return false;
+    if (!/^\/fonts\/(?:[a-z0-9][a-z0-9-]{0,79}\/)?[a-z0-9-]+\.(ttf|otf|woff|woff2)$/i.test(parsed.pathname)) return false;
     // Cloud deployments only expose R2_PUBLIC_URL on the server. Browser code
     // may retain a valid uploaded-font descriptor without knowing that origin;
     // the rendering route always performs the strict server-side origin check.
@@ -78,4 +89,28 @@ export function fontFormatFromUrl(url: string): TextFont["format"] | undefined {
   if (lower.endsWith(".woff")) return "woff";
   if (lower.endsWith(".woff2")) return "woff2";
   return undefined;
+}
+
+/** Produce the ASCII URL key used to bind an uploaded font to its display family. */
+export function fontFamilyKey(family: string): string | null {
+  const key = family
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return key || null;
+}
+
+/** Read the normalized family key embedded in a newly uploaded font URL. */
+export function familyKeyFromFontUrl(url: string): string | null {
+  const pathname = url.split(/[?#]/, 1)[0];
+  const match = /\/fonts\/([a-z0-9][a-z0-9-]{0,79})\/[a-z0-9-]+\.(?:ttf|otf|woff|woff2)$/i.exec(pathname);
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function isBuiltInFontFamily(family: string): boolean {
+  const familyKey = fontFamilyKey(family);
+  return !!familyKey && BUILT_IN_TEXT_FONTS.some((builtIn) => fontFamilyKey(builtIn) === familyKey);
 }

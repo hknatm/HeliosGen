@@ -1,6 +1,8 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { NodeData, TextContent } from "./store";
 import { parseStyleProfileObject, readStyleComposition, type StyleComposition } from "./styleComposition";
+import { rawCopySignature } from "./copyComposer";
+import type { TextRenderingSettings } from "./textRenderingSettings";
 
 export interface TextRendererInputs {
   imageUrl?: string;
@@ -52,8 +54,9 @@ export function resolveTextRendererInputs(
       }
     }
     // Copy Composer exposes its refined copy ONLY after the user explicitly
-    // accepts it. Unaccepted proposals never reach the Text Renderer.
-    if (edge.targetHandle === "text" && source.type === "copyComposerNode" && source.data.copyAccepted === true) {
+    // accepts it AND the accepted copy still matches its source. Unaccepted or
+    // stale proposals never reach the Text Renderer.
+    if (edge.targetHandle === "text" && source.type === "copyComposerNode" && copyComposerIsUsable(source, nodes)) {
       const content = validTextContent(source.data.refinedTextContent);
       if (content) {
         inputs.content = content;
@@ -66,6 +69,40 @@ export function resolveTextRendererInputs(
     }
   }
   return inputs;
+}
+
+/**
+ * True when a Copy Composer node's accepted copy is still valid: it was
+ * explicitly accepted AND its source signature still matches the connected
+ * Text Content node it was derived from. Stale acceptances (source edited
+ * after approval) are treated as unaccepted so they never reach the renderer.
+ */
+export function copyComposerIsUsable(source: Node<NodeData>, nodes: Node<NodeData>[]): boolean {
+  if (source.data.copyAccepted !== true) return false;
+  const acceptedSig = source.data.copyAcceptedRawSignature;
+  const sourceId = source.data.copySourceId;
+  if (typeof acceptedSig !== "string" || typeof sourceId !== "string") return false;
+  const rawSource = nodes.find((node) => node.id === sourceId);
+  const raw = rawSource ? validTextContent(rawSource.data.textContent) : undefined;
+  return !!raw && rawCopySignature(raw) === acceptedSig;
+}
+
+/** Stable signature of everything the renderer composites — used to flag stale results. */
+export function rendererInputSignature(
+  inputs: TextRendererInputs,
+  settings: TextRenderingSettings,
+  fontUrl?: string,
+  fontFamilyKey?: string,
+): string {
+  if (!inputs.imageUrl || !inputs.content || !inputs.composition) return "";
+  return JSON.stringify({
+    imageUrl: inputs.imageUrl,
+    content: inputs.content,
+    composition: inputs.composition,
+    settings,
+    fontUrl: fontUrl ?? null,
+    fontFamilyKey: fontFamilyKey ?? null,
+  });
 }
 
 export function hasRenderableText(content: TextContent | undefined): boolean {

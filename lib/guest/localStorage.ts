@@ -25,18 +25,26 @@ function ext(contentType: string): string {
   return "jpg";
 }
 
-export async function uploadBuffer(buffer: Buffer, contentType: string, folder: string): Promise<string> {
+export async function uploadBuffer(
+  buffer: Buffer,
+  contentType: string,
+  folder: string,
+  options: { deduplicate?: boolean } = {},
+): Promise<string> {
   buffer = await stripMetadata(buffer, contentType);
-  const hash   = hashBuffer(buffer);
-  const cached = lookupAssetHash(hash);
-  if (cached) return cached;
+  const deduplicate = options.deduplicate !== false;
+  const hash = hashBuffer(buffer);
+  if (deduplicate) {
+    const cached = lookupAssetHash(hash);
+    if (cached) return cached;
+  }
 
   await mkdir(join(GENERATED_DIR, folder), { recursive: true });
   const filename = `${randomUUID()}.${ext(contentType)}`;
   await writeFile(join(GENERATED_DIR, folder, filename), buffer);
   const url = `/generated/${folder}/${filename}`;
 
-  storeAssetHash(hash, url, contentType, buffer.byteLength);
+  if (deduplicate) storeAssetHash(hash, url, contentType, buffer.byteLength);
   return url;
 }
 
