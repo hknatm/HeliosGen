@@ -366,7 +366,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           {/* Output display — nowheel tells React Flow to skip its scroll-to-pan handler */}
           <div
             ref={outputRef}
-            className="nowheel absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-white leading-[1.6] overflow-y-auto select-text"
+            className="nowheel absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-foreground leading-[1.6] overflow-y-auto select-text"
             style={{ whiteSpace: "pre-wrap", overscrollBehavior: "contain", display: viewMode === "output" ? undefined : "none" }}
             onMouseDown={(e) => { if (selected) e.stopPropagation(); }}
           >
@@ -402,7 +402,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
               {!localPrompt && !hasContext && (
                 <div
                   aria-hidden
-                  className="absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-[#3A4055] leading-[1.6] pointer-events-none select-none"
+                  className="absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-muted-foreground leading-[1.6] pointer-events-none select-none"
                 >
                   Describe what you want to generate…
                 </div>
@@ -410,7 +410,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
               {!localPrompt && hasContext && (
                 <div
                   aria-hidden
-                  className="absolute inset-0 px-3 pt-[78px] pb-10 text-[13px] text-[#3A4055] leading-[1.6] pointer-events-none select-none"
+                  className="absolute inset-0 px-3 pt-[78px] pb-10 text-[13px] text-muted-foreground leading-[1.6] pointer-events-none select-none"
                 >
                   Optionally describe what you want… otherwise the agent composes from connected context.
                 </div>
@@ -418,8 +418,8 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
               <textarea
                 ref={textareaRef}
                 aria-label="AI Agent prompt"
-                className="relative w-full h-full px-3 pb-10 bg-transparent text-[13px] text-white leading-[1.6] resize-none overflow-y-auto z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-amber-300"
-                style={{ caretColor: "white", overscrollBehavior: "contain", paddingTop: hasContext ? 78 : 40 }}
+                className="relative w-full h-full px-3 pb-10 bg-transparent text-[13px] text-foreground leading-[1.6] resize-none overflow-y-auto z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
+                style={{ caretColor: "currentColor", overscrollBehavior: "contain", paddingTop: hasContext ? 78 : 40 }}
                 defaultValue={localPrompt}
                 readOnly={readOnly}
                 onChange={(e) => updateNodeData(id, { localPrompt: e.target.value })}

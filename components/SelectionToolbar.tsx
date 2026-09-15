@@ -183,7 +183,7 @@ export default function SelectionToolbar() {
       }}
     >
       <div
-        className="flex items-center gap-0.5 px-1.5 py-1"
+        className="ui-themed-panel flex items-center gap-0.5 px-1.5 py-1"
         style={{
           borderRadius: 999,
           background:   "rgba(16, 16, 16, 0.96)",

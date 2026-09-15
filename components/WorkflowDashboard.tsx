@@ -386,7 +386,7 @@ function SpaceCard({ space, onOpen }: { space: Space; onOpen: () => void }) {
 
   return (
     <article
-      className="wsd-card"
+      className="wsd-card ui-themed-panel"
       onClick={() => { if (!renaming && !menuOpen) onOpen(); }}
     >
       {/* Hover action buttons */}
@@ -479,7 +479,7 @@ function SpaceCard({ space, onOpen }: { space: Space; onOpen: () => void }) {
 function CreateCard({ onCreate }: { onCreate: () => void }) {
   return (
     <div
-      className="wsd-new"
+      className="wsd-new ui-themed-panel"
       role="button"
       tabIndex={0}
       onClick={onCreate}
@@ -574,7 +574,7 @@ export default function WorkflowDashboard() {
           flexWrap: "wrap", rowGap: "16px",
         }}>
           <div>
-            <h1 style={{
+            <h1 className="ui-themed-heading" style={{
               margin: 0,
               fontSize: "28px", fontWeight: 600, lineHeight: 1.1, letterSpacing: "-0.02em",
               color: "#ffffff",

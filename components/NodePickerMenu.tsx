@@ -390,7 +390,7 @@ export default function NodePickerMenu({ dropState, onClose }: Props) {
       <div
         ref={menuRef}
         style={{ position: "fixed", left, top, zIndex: 1000 }}
-        className="w-56 bg-[#0F1214] border border-[#2A2A2A] rounded-lg shadow-2xl overflow-hidden"
+        className="ui-themed-menu w-56 bg-[#0F1214] border border-[#2A2A2A] rounded-lg shadow-2xl overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-3 py-2 border-b border-[#1E1E1E]">

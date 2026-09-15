@@ -20,6 +20,35 @@
   --canvas-dot: rgba(255, 255, 255, 0.10);
   --input: #252c39;
   --ring: #14b8a6;
+  /* Shared semantic text tokens for legacy inline UI styles. Keep the dark
+     values identical to the original white-alpha palette so theme fixes do
+     not alter the existing dark presentation. */
+  --ui-text-strong: rgba(255, 255, 255, 0.9);
+  --ui-text-primary: rgba(255, 255, 255, 0.85);
+  --ui-text-secondary: rgba(255, 255, 255, 0.7);
+  --ui-text-muted: rgba(255, 255, 255, 0.55);
+  --ui-text-faint: rgba(255, 255, 255, 0.4);
+  --ui-text-subtle: rgba(255, 255, 255, 0.3);
+  --ui-divider: rgba(255, 255, 255, 0.08);
+  --ui-control-surface: rgba(255, 255, 255, 0.05);
+  --ui-overlay-surface: rgba(13, 13, 15, 0.94);
+  --ui-overlay-strong: rgba(16, 16, 16, 0.96);
+  --ui-menu-surface: rgba(10, 11, 13, 0.98);
+  --ui-control-border: rgba(255, 255, 255, 0.1);
+  --ui-node-surface: #141820;
+  --ui-node-input-surface: #0d1119;
+  --ui-node-input-border: #1a2030;
+  --ui-node-muted-text: #a0a0a0;
+  --ui-node-placeholder: #3a4055;
+  --ui-field-surface: rgba(0, 0, 0, 0.2);
+  --ui-field-surface-soft: rgba(0, 0, 0, 0.16);
+  --ui-card-surface: rgba(255, 255, 255, 0.025);
+  --ui-card-border: rgba(255, 255, 255, 0.08);
+  --syntax-key: #06b6d4;
+  --syntax-string: #86efac;
+  --syntax-number: #fb923c;
+  --syntax-literal: #a78bfa;
+  --syntax-punctuation: #6b7280;
   color-scheme: dark;
 }
 
@@ -41,6 +70,32 @@ html[data-theme="light"] {
   --canvas-dot: rgba(23, 32, 44, 0.13);
   --input: #c7ced8;
   --ring: #0f9488;
+  --ui-text-strong: #17202c;
+  --ui-text-primary: #273241;
+  --ui-text-secondary: #3d4856;
+  --ui-text-muted: #5f6b7a;
+  --ui-text-faint: #667383;
+  --ui-text-subtle: #707b8b;
+  --ui-divider: rgba(23, 32, 44, 0.14);
+  --ui-control-surface: rgba(23, 32, 44, 0.06);
+  --ui-overlay-surface: rgba(255, 255, 255, 0.96);
+  --ui-overlay-strong: rgba(255, 255, 255, 0.98);
+  --ui-menu-surface: #ffffff;
+  --ui-control-border: rgba(23, 32, 44, 0.18);
+  --ui-node-surface: #ffffff;
+  --ui-node-input-surface: #f2f4f7;
+  --ui-node-input-border: #aab4c1;
+  --ui-node-muted-text: #4e5b6b;
+  --ui-node-placeholder: #687586;
+  --ui-field-surface: #f2f4f7;
+  --ui-field-surface-soft: #f7f8fa;
+  --ui-card-surface: #f7f8fa;
+  --ui-card-border: rgba(23, 32, 44, 0.14);
+  --syntax-key: #087f75;
+  --syntax-string: #166534;
+  --syntax-number: #9a3412;
+  --syntax-literal: #6d28d9;
+  --syntax-punctuation: #4b5563;
   color-scheme: light;
 }
 
@@ -1016,6 +1071,404 @@ body,
 }
 
 /* ── Carousel slide ─────────────────────────────────────────────────────── */
+/* ── Theme-aware component surfaces ────────────────────────────────────────
+   These classes are intentionally opt-in: media overlays and generated artwork
+   keep their original dark treatment, while product controls use these semantic
+   surfaces in both themes. */
+.ui-themed-panel {
+  background: var(--ui-overlay-surface);
+  border-color: var(--ui-control-border);
+  color: var(--ui-text-primary);
+}
+
+html[data-theme="light"] .ui-themed-panel {
+  background: var(--ui-overlay-surface) !important;
+  border-color: var(--ui-control-border) !important;
+  color: var(--ui-text-primary) !important;
+}
+
+html[data-theme="light"] .ui-themed-menu {
+  background: var(--ui-menu-surface) !important;
+  border-color: var(--ui-control-border) !important;
+  color: var(--ui-text-primary) !important;
+}
+
+/* Opt-in helper for portal controls whose inline styles intentionally preserve
+   a dark media overlay in dark mode. */
+.ui-themed-panel input,
+.ui-themed-panel textarea,
+.ui-themed-panel select,
+.ui-themed-menu input,
+.ui-themed-menu textarea,
+.ui-themed-menu select {
+  color: inherit;
+  border-color: var(--ui-control-border);
+}
+
+.ui-themed-menu {
+  background: var(--ui-menu-surface);
+  border-color: var(--ui-control-border);
+  color: var(--ui-text-primary);
+}
+
+.ui-themed-control {
+  background: var(--ui-control-surface);
+  border-color: var(--ui-control-border);
+  color: var(--ui-text-primary);
+}
+
+html[data-theme="light"] .app-sidebar .text-white\/25,
+html[data-theme="light"] .app-sidebar .text-white\/30,
+html[data-theme="light"] .app-sidebar .text-white\/35,
+html[data-theme="light"] .app-sidebar .text-white\/40,
+html[data-theme="light"] .app-sidebar .text-white\/50,
+html[data-theme="light"] .app-sidebar .text-white\/55,
+html[data-theme="light"] .app-sidebar .text-white\/60,
+html[data-theme="light"] .app-sidebar .text-white\/70,
+html[data-theme="light"] .app-sidebar .text-white\/80,
+html[data-theme="light"] .app-sidebar .text-white\/90 {
+  color: var(--ui-text-muted) !important;
+}
+
+html[data-theme="light"] .app-sidebar .text-white\/90,
+html[data-theme="light"] .app-sidebar .text-white {
+  color: var(--ui-text-strong) !important;
+}
+
+/* Workflow controls are product chrome, not image content. */
+html[data-theme="light"] #canvas-toolbar,
+html[data-theme="light"] .workflow-controls,
+html[data-theme="light"] .react-flow__controls,
+html[data-theme="light"] .react-flow__controls-button {
+  background: var(--ui-overlay-surface) !important;
+  border-color: var(--ui-control-border) !important;
+  color: var(--ui-text-secondary) !important;
+  box-shadow: 0 8px 24px var(--shadow-color) !important;
+}
+
+html[data-theme="light"] #canvas-toolbar button:not(#toolbar-add) {
+  color: var(--ui-text-secondary) !important;
+}
+
+html[data-theme="light"] #canvas-toolbar button:not(#toolbar-add):hover {
+  color: var(--ui-text-strong) !important;
+  background: var(--ui-control-surface) !important;
+}
+
+html[data-theme="light"] #canvas-toolbar button[data-active="true"] {
+  color: #ffffff !important;
+  background: var(--accent) !important;
+}
+
+html[data-theme="light"] .workflow-controls .react-flow__controls-button,
+html[data-theme="light"] .workflow-controls .react-flow__controls-button svg,
+html[data-theme="light"] .react-flow__controls-button,
+html[data-theme="light"] .react-flow__controls-button svg {
+  background: var(--ui-overlay-surface) !important;
+  color: var(--ui-text-secondary) !important;
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+html[data-theme="light"] .workflow-controls .react-flow__controls-button:hover,
+html[data-theme="light"] .react-flow__controls-button:hover {
+  background: var(--surface-muted) !important;
+  color: var(--ui-text-strong) !important;
+}
+
+/* Node labels and legacy node utility colors. */
+html[data-theme="light"] .node-label,
+html[data-theme="light"] .node-field-label,
+html[data-theme="light"] .node-above-label,
+html[data-theme="light"] .node-card .text-\[\#A0A0A0\],
+html[data-theme="light"] .node-card .text-\[\#777\],
+html[data-theme="light"] .node-card .text-\[\#555\] {
+  color: var(--ui-node-muted-text) !important;
+}
+
+html[data-theme="light"] .node-card .text-white,
+html[data-theme="light"] .node-card .text-white\/70,
+html[data-theme="light"] .node-card .text-white\/80,
+html[data-theme="light"] .node-card .text-white\/90 {
+  color: var(--ui-text-primary) !important;
+}
+
+html[data-theme="light"] .node-card [style*="color: rgba(255,255,255"],
+html[data-theme="light"] .node-card [style*="color: rgba(255, 255, 255"],
+html[data-theme="light"] .node-card [style*="color: #fff"],
+html[data-theme="light"] .node-card [style*="color: #FFFFFF"] {
+  color: var(--ui-text-primary) !important;
+}
+
+html[data-theme="light"] .node-card .text-\[\#3A4055\],
+html[data-theme="light"] .node-card .text-\[\#4A4A45\],
+html[data-theme="light"] .node-card .text-\[\#CCCCCC\] {
+  color: var(--ui-text-muted) !important;
+}
+
+html[data-theme="light"] .node-card .bg-\[\#111622\],
+html[data-theme="light"] .node-card .bg-\[\#0B0F17\],
+html[data-theme="light"] .node-card .bg-\[\#151821\],
+html[data-theme="light"] .node-card .bg-\[\#141C28\] {
+  background: var(--surface-muted) !important;
+}
+
+html[data-theme="light"] .node-card .border-\[\#1E2840\],
+html[data-theme="light"] .node-card .border-\[\#2A2A2A\],
+html[data-theme="light"] .node-card .border-\[\#1E1E1E\] {
+  border-color: var(--border) !important;
+}
+
+html[data-theme="light"] .node-data-card input,
+html[data-theme="light"] .node-data-card textarea,
+html[data-theme="light"] .node-data-card select {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .node-data-card input::placeholder,
+html[data-theme="light"] .node-data-card textarea::placeholder {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] .node-data-card {
+  color: var(--foreground);
+}
+
+html[data-theme="light"] .ui-themed-heading {
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .ui-themed-menu-input {
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .ui-themed-menu-muted,
+html[data-theme="light"] .gallery-menu-group-label {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] .ui-themed-menu-icon {
+  color: var(--muted) !important;
+  stroke: currentColor;
+}
+
+html[data-theme="light"] .ui-themed-menu button,
+html[data-theme="light"] .ui-themed-menu [role="button"] {
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .ui-themed-menu button:hover,
+html[data-theme="light"] .ui-themed-menu [role="button"]:hover {
+  background: var(--surface-muted) !important;
+}
+
+html[data-theme="light"] .node-data-card [style*="color: rgba(255, 255, 255"] {
+  color: var(--ui-text-secondary) !important;
+}
+
+html[data-theme="light"] .node-data-card [style*="background: rgba(0, 0, 0"] {
+  background: var(--surface-muted) !important;
+}
+
+html[data-theme="light"] .node-data-card button {
+  color: var(--foreground);
+}
+
+html[data-theme="light"] .node-data-card button:disabled {
+  color: var(--muted);
+}
+
+html[data-theme="light"] .node-data-card button:not(:disabled):hover {
+  background: var(--surface-muted) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-source-tab {
+  color: var(--ui-text-secondary) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-source-tab-active {
+  color: var(--ui-text-strong) !important;
+  background: var(--ui-control-surface) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel {
+  background: var(--ui-overlay-surface) !important;
+  border-color: var(--ui-control-border) !important;
+  color: var(--ui-text-primary) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel > button:not(.gallery-generate-button),
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel > div button:not(.gallery-generate-button),
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel button {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel .gallery-generate-button {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-foreground) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel .gallery-generate-button kbd {
+  background: color-mix(in srgb, var(--accent-foreground) 18%, transparent) !important;
+  color: var(--accent-foreground) !important;
+}
+
+html[data-theme="light"] .wsd-card,
+html[data-theme="light"] .wsd-new,
+html[data-theme="light"] .wsd-card [style*="color"],
+html[data-theme="light"] .wsd-new [style*="color"] {
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .wsd-card [style*="rgba(255,255,255"],
+html[data-theme="light"] .wsd-new [style*="rgba(255,255,255"] {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] #settings-modal button {
+  color: var(--foreground);
+}
+
+html[data-theme="light"] #settings-modal > div:first-child button {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] #settings-modal > div:first-child button[aria-current="page"] {
+  color: var(--foreground) !important;
+  background: var(--surface-muted) !important;
+}
+
+/* Settings is rendered as a portal, so it needs its own semantic shell. */
+html[data-theme="light"] #settings-modal,
+html[data-theme="light"] #settings-modal > div {
+  background: var(--surface) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] #settings-modal h2,
+html[data-theme="light"] #settings-modal h3,
+html[data-theme="light"] #settings-modal input,
+html[data-theme="light"] #settings-modal textarea,
+html[data-theme="light"] #settings-modal select {
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] #settings-modal input,
+html[data-theme="light"] #settings-modal textarea,
+html[data-theme="light"] #settings-modal select {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme="light"] #settings-modal p {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] #settings-modal label,
+html[data-theme="light"] #settings-modal legend {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] #settings-modal a {
+  color: var(--accent) !important;
+}
+
+/* Gallery chrome is separate from the image itself. */
+html[data-theme="light"] .gallery-page-shell,
+html[data-theme="light"] .gallery-page-shell .gallery-subnav,
+html[data-theme="light"] .gallery-page-shell .gallery-selection-toolbar,
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel {
+  background: var(--surface) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-action-btn,
+html[data-theme="light"] .gallery-page-shell .gallery-ref-btn,
+html[data-theme="light"] .gallery-page-shell .gallery-control-trigger {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-control-label,
+html[data-theme="light"] .gallery-page-shell .gallery-control-icon {
+  color: var(--foreground) !important;
+  stroke: currentColor;
+}
+
+html[data-theme="light"] .gallery-control-menu {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .gallery-menu-item {
+  color: var(--ui-text-secondary) !important;
+}
+
+html[data-theme="light"] .gallery-menu-item:hover {
+  background: var(--surface-muted) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .gallery-menu-item[data-active="true"] {
+  background: rgba(8, 127, 117, 0.12) !important;
+  color: var(--accent) !important;
+}
+
+html[data-theme="light"] .gallery-control-menu input,
+html[data-theme="light"] .gallery-page-shell .gallery-control-input {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .gallery-page-shell .gallery-zoom-slider,
+html[data-theme="light"] .gallery-page-shell .dur-slider {
+  background: var(--border) !important;
+}
+
+.gallery-prompt-text { color: #e8e8e6; }
+html[data-theme="light"] .gallery-prompt-text { color: var(--foreground); }
+html[data-theme="light"] .gallery-floating-panel [style*="color: #06b6d4"] { color: #087f75 !important; }
+html[data-theme="light"] .gallery-floating-panel [style*="color: #86efac"] { color: #166534 !important; }
+html[data-theme="light"] .gallery-floating-panel [style*="color: #fb923c"] { color: #9a3412 !important; }
+html[data-theme="light"] .gallery-floating-panel [style*="color: #a78bfa"] { color: #6d28d9 !important; }
+html[data-theme="light"] .gallery-syntax-token[style*="#06b6d4"] { color: #087f75 !important; }
+html[data-theme="light"] .gallery-syntax-token[style*="#86efac"] { color: #166534 !important; }
+html[data-theme="light"] .gallery-syntax-token[style*="#fb923c"] { color: #9a3412 !important; }
+html[data-theme="light"] .gallery-syntax-token[style*="#a78bfa"] { color: #6d28d9 !important; }
+html[data-theme="light"] .gallery-syntax-token[style*="#6b7280"],
+html[data-theme="light"] .gallery-floating-panel [style*="color: #6b7280"] { color: #4b5563 !important; }
+html[data-theme="light"] .gallery-mention-chip { color: var(--accent) !important; background: rgba(8, 127, 117, 0.12) !important; box-shadow: 0 0 0 3px rgba(8, 127, 117, 0.12) !important; }
+
+html[data-theme="light"] .gallery-page-shell .gallery-floating-panel .gallery-generate-button:disabled {
+  background: var(--surface-muted) !important;
+  border-color: var(--border) !important;
+  color: var(--muted) !important;
+  opacity: 0.65;
+}
+
+html[data-theme="light"] .prompt-mention-option span.text-\[\#CCC\],
+html[data-theme="light"] .prompt-mention-option span.text-\[\#4A4A45\] {
+  color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .prompt-mention-option-active {
+  background: rgba(8, 127, 117, 0.12) !important;
+}
+
+html[data-theme="light"] .prompt-mention-option-active span.text-\[\#2DD4BF\] {
+  color: #06675f !important;
+}
+
 /* ── Light theme compatibility for legacy hardcoded surfaces ───────────── */
 html[data-theme="light"] body,
 html[data-theme="light"] .app-shell,
@@ -1115,6 +1568,15 @@ html[data-theme="light"] .react-flow__minimap {
   background: var(--surface) !important;
   border-color: var(--border) !important;
   color: var(--foreground) !important;
+}
+
+html[data-theme="light"] .workflow-controls .react-flow__controls-button,
+html[data-theme="light"] .workflow-controls .react-flow__controls-button svg {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 html[data-theme="light"] .gallery-skeleton,

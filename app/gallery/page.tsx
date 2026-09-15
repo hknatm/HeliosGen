@@ -138,7 +138,7 @@ function splitByMentions(
 ): { nodes: React.ReactNode[]; nextKey: number } {
   if (!tagged.length) {
     return {
-      nodes: [<span key={keyStart} style={baseColor ? { color: baseColor } : undefined}>{text}</span>],
+      nodes: [<span key={keyStart} className={baseColor ? "gallery-syntax-token" : "gallery-prompt-text"} style={baseColor ? { color: baseColor } : undefined}>{text}</span>],
       nextKey: keyStart + 1,
     };
   }
@@ -153,16 +153,17 @@ function splitByMentions(
       if (idx !== -1 && (earliest === null || idx < earliest.idx)) earliest = { idx, tag };
     }
     if (!earliest) {
-      nodes.push(<span key={k++} style={baseColor ? { color: baseColor } : undefined}>{rest}</span>);
+      nodes.push(<span key={k++} className={baseColor ? "gallery-syntax-token" : "gallery-prompt-text"} style={baseColor ? { color: baseColor } : undefined}>{rest}</span>);
       break;
     }
     if (earliest.idx > 0) {
-      nodes.push(<span key={k++} style={baseColor ? { color: baseColor } : undefined}>{rest.slice(0, earliest.idx)}</span>);
+      nodes.push(<span key={k++} className={baseColor ? "gallery-syntax-token" : "gallery-prompt-text"} style={baseColor ? { color: baseColor } : undefined}>{rest.slice(0, earliest.idx)}</span>);
     }
     const tag = earliest.tag;
     nodes.push(
       <span
         key={k++}
+        className="gallery-mention-chip"
         style={{ color: "#2DD4BF", fontWeight: 500, cursor: "text", pointerEvents: "auto", userSelect: "none", background: "rgba(119,229,68,0.15)", boxShadow: "0 0 0 3px rgba(119,229,68,0.15)", borderRadius: "3px" }}
         onMouseEnter={e => onEnter(tag, e.currentTarget.getBoundingClientRect())}
         onMouseLeave={onLeave}
@@ -184,7 +185,7 @@ function renderGalleryMentions(
   onMouseDown: (tag: TaggedImage) => void,
 ): React.ReactNode {
   if (!text) return null;
-  if (!tagged.length) return <span style={{ color: "#e8e8e6" }}>{text}</span>;
+  if (!tagged.length) return <span className="gallery-prompt-text">{text}</span>;
 
   const sorted = [...tagged].sort((a, b) => b.label.length - a.label.length);
   const parts: React.ReactNode[] = [];
@@ -197,12 +198,13 @@ function renderGalleryMentions(
       const idx = rest.indexOf(`@${tag.label}`);
       if (idx !== -1 && (earliest === null || idx < earliest.idx)) earliest = { idx, tag };
     }
-    if (!earliest) { parts.push(<span key={key++} style={{ color: "#e8e8e6" }}>{rest}</span>); break; }
-    if (earliest.idx > 0) parts.push(<span key={key++} style={{ color: "#e8e8e6" }}>{rest.slice(0, earliest.idx)}</span>);
+    if (!earliest) { parts.push(<span key={key++} className="gallery-prompt-text">{rest}</span>); break; }
+    if (earliest.idx > 0) parts.push(<span key={key++} className="gallery-prompt-text">{rest.slice(0, earliest.idx)}</span>);
     const tag = earliest.tag;
     parts.push(
       <span
         key={key++}
+        className="gallery-mention-chip"
         style={{
           color: "#2DD4BF",
           fontWeight: 500,
@@ -2641,11 +2643,11 @@ function GalleryInner() {
 
 
   return (
-    <div style={{ flex: 1, background: "#0B0E14", display: "flex", flexDirection: "column", overflow: "hidden", color: "#fff", position: "relative" }}>
+    <div className="gallery-page-shell" style={{ flex: 1, background: "#0B0E14", display: "flex", flexDirection: "column", overflow: "hidden", color: "#fff", position: "relative" }}>
       <DotCanvasBackground />
 
       {/* ── Sub-navbar ── */}
-      {user && <div style={{
+      {user && <div className="gallery-subnav" style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -2668,6 +2670,7 @@ function GalleryInner() {
                 params.set("source", src);
                 router.replace(`${pathname}?${params.toString()}`);
               }}
+              className={`gallery-source-tab${sourceFilter === src ? " gallery-source-tab-active" : ""}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -3015,7 +3018,7 @@ function GalleryInner() {
         onChange={e => { if (e.target.files && vidPickTarget.current) { handleVidFilePick(e.target.files, vidPickTarget.current); e.target.value = ""; } }} />
 
       {/* ── Selection toolbar ── */}
-      <div style={{
+      <div className="gallery-selection-toolbar" style={{
         position: "fixed",
         bottom: "20px",
         left: isMobile ? "50%" : state === "collapsed" ? "calc(var(--sidebar-width-icon) / 2 + 50%)" : "calc(var(--sidebar-width) / 2 + 50%)",
@@ -3264,6 +3267,7 @@ function GalleryInner() {
       {/* ── Prompt bar ── */}
       <div
         ref={promptBarRef}
+        className="gallery-floating-panel"
         style={{
           position: "fixed",
           bottom: "32px",
@@ -3293,7 +3297,7 @@ function GalleryInner() {
           </div>
         )}
 
-        <div style={{
+        <div className="gallery-floating-panel" style={{
           position: "relative",
           background: "rgba(14,16,18,0.55)",
           backdropFilter: "blur(48px)",
@@ -4368,7 +4372,7 @@ function GalleryInner() {
                   disabled={!canGenerate}
                   variant="outline"
                   size="sm"
-                  className="border-none bg-[rgba(45,212,191,0.25)] text-[rgba(45,212,191,0.9)] hover:bg-[rgba(45,212,191,0.38)] hover:text-[rgba(45,212,191,0.9)] disabled:bg-[rgba(45,212,191,0.1)] disabled:text-[rgba(45,212,191,0.3)]"
+                  className="gallery-generate-button border-none bg-[rgba(45,212,191,0.25)] text-[rgba(45,212,191,0.9)] hover:bg-[rgba(45,212,191,0.38)] hover:text-[rgba(45,212,191,0.9)] disabled:bg-[rgba(45,212,191,0.1)] disabled:text-[rgba(45,212,191,0.3)]"
                 >
                   {submitting ? (
                     <span style={{
@@ -5080,6 +5084,7 @@ function CustomDropdown({
     <>
       <button
         ref={triggerRef}
+        className="gallery-control-trigger"
         onClick={() => open ? setOpen(false) : openDrop()}
         disabled={disabled}
         style={{
@@ -5119,11 +5124,12 @@ function CustomDropdown({
             {triggerIcon}
           </span>
         )}
-        <span style={{ fontSize: "13px", color: "#ffffff", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>
+        <span className="gallery-control-label" style={{ fontSize: "13px", color: "#ffffff", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>
           {label}
         </span>
         {showChevron && (
           <svg
+            className="gallery-control-icon"
             width="10" height="10" viewBox="0 0 24 24" fill="none"
             stroke="rgba(255,255,255,0.35)" strokeWidth="2.5" strokeLinecap="round"
             style={{ flexShrink: 0, transition: "transform 140ms", transform: open ? "rotate(180deg)" : "none" }}
@@ -5137,6 +5143,7 @@ function CustomDropdown({
         <div
           ref={dropRef}
           data-custom-dropdown-portal=""
+          className="gallery-control-menu ui-themed-menu"
           style={{
             position: "fixed",
             left: pos.left,
@@ -5159,7 +5166,7 @@ function CustomDropdown({
                     <div style={{ height: "1px", background: "rgba(255,255,255,0.06)", margin: "4px 8px" }} />
                   )}
                   {gk && (
-                    <div style={{
+                    <div className="gallery-menu-group-label" style={{
                       padding: "5px 10px 3px",
                       fontSize: "10px",
                       color: "rgba(255,255,255,0.22)",
@@ -5272,6 +5279,7 @@ function AspectRatioDropdown({
     <>
       <button
         ref={triggerRef}
+        className="gallery-control-trigger"
         onClick={() => open ? setOpen(false) : openDrop()}
         disabled={disabled}
         style={{
@@ -5307,10 +5315,11 @@ function AspectRatioDropdown({
             <RatioTriggerPreview ratio={value} />
           </span>
         )}
-        <span style={{ fontSize: "13px", color: "#ffffff", whiteSpace: "nowrap", letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums" }}>
+        <span className="gallery-control-label" style={{ fontSize: "13px", color: "#ffffff", whiteSpace: "nowrap", letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums" }}>
           {label}
         </span>
         <svg
+          className="gallery-control-icon"
           width="10" height="10" viewBox="0 0 24 24" fill="none"
           stroke="rgba(255,255,255,0.35)" strokeWidth="2.5" strokeLinecap="round"
           style={{ flexShrink: 0, transition: "transform 140ms", transform: open ? "rotate(180deg)" : "none" }}
@@ -5323,6 +5332,7 @@ function AspectRatioDropdown({
         <div
           ref={dropRef}
           data-custom-dropdown-portal=""
+          className="gallery-control-menu ui-themed-menu"
           style={{
             position: "fixed",
             left: pos.left,
@@ -5460,6 +5470,8 @@ function DropItem({ label, active, onClick, preview, providerIcon }: { label: st
   const [hovered, setHovered] = useState(false);
   return (
     <button
+      className="gallery-menu-item"
+      data-active={active ? "true" : "false"}
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -6182,7 +6194,7 @@ function syntaxHighlightJson(
       parts.push(...nodes);
       k = nextKey;
     } else {
-      parts.push(<span key={k++} style={color ? { color } : undefined}>{text}</span>);
+      parts.push(<span key={k++} className={color ? "gallery-syntax-token" : "gallery-prompt-text"} style={color ? { color } : undefined}>{text}</span>);
     }
   };
   const re = /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|(true|false|null)|([{}\[\],])/g;
@@ -6192,17 +6204,17 @@ function syntaxHighlightJson(
     push(last, m.index);
     if (m[1] !== undefined) {
       if (m[2] !== undefined) {
-        push(m.index, m.index + m[1].length, "#06b6d4");
-        push(m.index + m[1].length, m.index + m[0].length, "#6b7280");
+        push(m.index, m.index + m[1].length, "var(--syntax-key)");
+        push(m.index + m[1].length, m.index + m[0].length, "var(--syntax-punctuation)");
       } else {
-        push(m.index, m.index + m[1].length, "#86efac");
+        push(m.index, m.index + m[1].length, "var(--syntax-string)");
       }
     } else if (m[3] !== undefined) {
-      push(m.index, m.index + m[3].length, "#fb923c");
+      push(m.index, m.index + m[3].length, "var(--syntax-number)");
     } else if (m[4] !== undefined) {
-      push(m.index, m.index + m[4].length, "#a78bfa");
+      push(m.index, m.index + m[4].length, "var(--syntax-literal)");
     } else if (m[5] !== undefined) {
-      push(m.index, m.index + m[5].length, "#6b7280");
+      push(m.index, m.index + m[5].length, "var(--syntax-punctuation)");
     }
     last = re.lastIndex;
   }
@@ -6223,22 +6235,22 @@ function syntaxHighlightYaml(
   lines.forEach((line, i) => {
     // Directive / document markers
     if (/^---/.test(line) || /^\.\.\.$/.test(line)) {
-      parts.push(<span key={k++} style={{ color: "#6b7280" }}>{line}</span>);
+      parts.push(<span key={k++} style={{ color: "var(--syntax-punctuation)" }}>{line}</span>);
     } else {
       // Key: value  (handles indent + optional list marker)
       const keyMatch = line.match(/^(\s*(?:-\s+)?)([\w\-./]+)(\s*:)(.*)/);
       if (keyMatch) {
         const [, indent, key, colon, rest] = keyMatch;
         parts.push(<span key={k++}>{indent}</span>);
-        parts.push(<span key={k++} style={{ color: "#06b6d4" }}>{key}</span>);
-        parts.push(<span key={k++} style={{ color: "#6b7280" }}>{colon}</span>);
+        parts.push(<span key={k++} style={{ color: "var(--syntax-key)" }}>{key}</span>);
+        parts.push(<span key={k++} style={{ color: "var(--syntax-punctuation)" }}>{colon}</span>);
         parts.push(<span key={k++}>{colorYamlValue(rest, k, tagged, onEnter, onLeave, onMD)}</span>);
         k++;
       } else {
         // List item or plain value
         const listMatch = line.match(/^(\s*-\s+)(.*)/);
         if (listMatch) {
-          parts.push(<span key={k++} style={{ color: "#6b7280" }}>{listMatch[1]}</span>);
+          parts.push(<span key={k++} style={{ color: "var(--syntax-punctuation)" }}>{listMatch[1]}</span>);
           parts.push(<span key={k++}>{colorYamlValue(listMatch[2], k, tagged, onEnter, onLeave, onMD)}</span>);
           k++;
         } else {
@@ -6279,18 +6291,18 @@ function colorYamlValue(
       out.push(...nodes);
       k = nextKey;
     } else {
-      out.push(<span key={k++} style={color ? { color } : undefined}>{text}</span>);
+      out.push(<span key={k++} className={color ? "gallery-syntax-token" : "gallery-prompt-text"} style={color ? { color } : undefined}>{text}</span>);
     }
   };
 
   if (/^(true|false|yes|no|on|off)$/i.test(trimmed)) {
-    pushValue(main, "#a78bfa");
+    pushValue(main, "var(--syntax-literal)");
   } else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed) || /^0x[\da-fA-F]+$/.test(trimmed)) {
-    pushValue(main, "#fb923c");
+    pushValue(main, "var(--syntax-number)");
   } else if (/^(null|~)$/.test(trimmed)) {
-    pushValue(main, "#a78bfa");
+    pushValue(main, "var(--syntax-literal)");
   } else if (/^['"]/.test(trimmed)) {
-    pushValue(main, "#86efac");
+    pushValue(main, "var(--syntax-string)");
   } else if (trimmed !== "") {
     pushValue(main, "rgba(255,255,255,0.82)");
   } else {

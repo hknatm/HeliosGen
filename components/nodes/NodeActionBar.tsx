@@ -55,7 +55,7 @@ export default function NodeActionBar({ visible, hasContent, isSaving, onPreview
   return (
     <NodeToolbar isVisible={visible} position={Position.Top} offset={16}>
       <div
-        className="flex items-center gap-0.5 px-1.5 py-1 node-action-bar-enter"
+        className="ui-themed-panel flex items-center gap-0.5 px-1.5 py-1 node-action-bar-enter"
         style={{
           borderRadius: 999,
           background: "rgba(16, 16, 16, 0.96)",

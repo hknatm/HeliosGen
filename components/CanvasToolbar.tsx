@@ -46,6 +46,7 @@ function Btn({
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      data-active={active ? "true" : "false"}
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         width: "34px", height: "34px", borderRadius: "10px",
@@ -89,6 +90,7 @@ export default function CanvasToolbar({
   return (
     <div
       id="canvas-toolbar"
+      className="ui-themed-panel"
       style={{
         position: "absolute", left: "16px", top: "50%",
         transform: "translateY(-50%)", zIndex: 100,

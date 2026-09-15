@@ -413,7 +413,7 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
   ] : [];
 
   return (
-    <div ref={cardRef} className={`node-card w-full h-full flex flex-col${busy || isRendering ? " node-generating" : ""}`} style={{ minWidth: 340, overflow: "visible" }}>
+    <div ref={cardRef} className={`node-card node-data-card w-full h-full flex flex-col${busy || isRendering ? " node-generating" : ""}`} style={{ minWidth: 340, overflow: "visible" }}>
       <CornerResizer minWidth={320} minHeight={360} />
       <span className="node-above-label">{data.label as string}</span>
       {missingMessages.length > 0 && <MissingInputWarning messages={missingMessages} />}

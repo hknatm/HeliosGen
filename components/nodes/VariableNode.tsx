@@ -107,7 +107,7 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
     .filter((key, index, keys) => keys.indexOf(key) !== index));
 
   return (
-    <div ref={cardRef} className="node-card w-full h-full flex flex-col" style={{ minWidth: 310, overflow: "visible" }}>
+    <div ref={cardRef} className="node-card node-data-card w-full h-full flex flex-col" style={{ minWidth: 310, overflow: "visible" }}>
       <CornerResizer minWidth={290} minHeight={210} />
       <span className="node-above-label">{data.label as string}</span>
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px", height: "100%", minHeight: 0 }}>

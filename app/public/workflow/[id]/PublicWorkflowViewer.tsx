@@ -149,7 +149,7 @@ export default function PublicWorkflowViewer({ id }: { id: string }) {
           <Background variant={BackgroundVariant.Dots} gap={28} size={1.5} color="#888888" />
           <Controls
             showInteractive={false}
-            className="[&>button]:!bg-[#0B0E14] [&>button]:!border-[#1A2030] [&>button]:!text-[#A0A0A0] [&>button:hover]:!text-white"
+            className="workflow-controls"
           />
         </ReactFlow>
 

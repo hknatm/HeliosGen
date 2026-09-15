@@ -350,7 +350,7 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
   const proposedBlocks = copyBlocks(refined);
 
   return (
-    <div ref={cardRef} className={`node-card w-full h-full flex flex-col${busy ? " node-generating" : ""}`} style={{ minWidth: 320, overflow: "visible" }}>
+    <div ref={cardRef} className={`node-card node-data-card w-full h-full flex flex-col${busy ? " node-generating" : ""}`} style={{ minWidth: 320, overflow: "visible" }}>
       <CornerResizer minWidth={300} minHeight={300} />
       <span className="node-above-label">{data.label as string}</span>
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "10px", minHeight: 0, height: "100%" }}>

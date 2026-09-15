@@ -1869,7 +1869,7 @@ export default function WorkflowCanvas() {
   }, [edges, ancestorEdgeIds, potentialGroupIds, dyingEdgeIds]);
 
   return (
-    <div className="relative flex-1 flex flex-col min-w-0 h-full" style={{ background: "#0B0E14" }}>
+    <div className="workflow-canvas-shell relative flex-1 flex flex-col min-w-0 h-full" style={{ background: "#0B0E14" }}>
       <div
         ref={wrapperRef}
         className={`relative flex-1 flex flex-col min-h-0 min-w-0${activeTool === "hand" ? " canvas-hand-mode" : ""}`}
@@ -1951,7 +1951,7 @@ export default function WorkflowCanvas() {
 
           <Controls
             showInteractive={false}
-            className="[&>button]:!bg-[#0B0E14] [&>button]:!border-[#1A2030] [&>button]:!text-[#A0A0A0] [&>button:hover]:!text-white"
+            className="workflow-controls"
           />
 
         </ReactFlow>

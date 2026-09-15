@@ -378,6 +378,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
 
       <div
         id="add-node-menu"
+        className="ui-themed-menu"
         ref={menuRef}
         onMouseDown={(e) => e.stopPropagation()}
         style={{
@@ -400,7 +401,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
 
         {/* Search bar */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <Search size={14} color="rgba(255,255,255,0.3)" />
+          <Search className="ui-themed-menu-icon" size={14} style={{ color: "rgba(255,255,255,0.3)" }} />
           <input
             ref={searchRef}
             id="add-node-search"
@@ -408,7 +409,8 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search nodes…"
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "rgba(255,255,255,0.82)", fontSize: "13px", caretColor: "#2DD4BF" }}
+            className="ui-themed-menu-input"
+          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "rgba(255,255,255,0.82)", fontSize: "13px", caretColor: "#2DD4BF" }}
           />
           {query && (
             <button type="button" aria-label="Clear search" onClick={() => setQuery("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.3)", padding: 0, lineHeight: 1 }}>
@@ -421,7 +423,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         <div style={{ overflowY: "auto", flex: 1, padding: "8px" }}>
           {filtered ? (
             filtered.length === 0 ? (
-              <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "24px 0" }}>
+              <p className="ui-themed-menu-muted" style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)", textAlign: "center", padding: "24px 0" }}>
                 No nodes match &ldquo;{query}&rdquo;
               </p>
             ) : (
@@ -430,7 +432,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
           ) : (
             SECTIONS.map((section) => (
               <div key={section.id} style={{ marginBottom: "4px" }}>
-                <p style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em", color: "rgba(255,255,255,0.25)", padding: "8px 14px 4px", margin: 0 }}>
+                <p className="ui-themed-menu-muted" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em", color: "rgba(255,255,255,0.25)", padding: "8px 14px 4px", margin: 0 }}>
                   {section.label}
                 </p>
                 {section.nodeTypes.map((t) => <NodeRow key={t} nodeType={t} />)}
@@ -468,7 +470,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         </div>
 
         {/* Bottom hint bar */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: "11px", color: "rgba(255,255,255,0.25)" }}>
+        <div className="ui-themed-menu-muted" style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 14px", borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: "11px", color: "rgba(255,255,255,0.25)" }}>
           <span><kbd style={{ fontFamily: "monospace", opacity: 0.7 }}>↑↓</kbd> Navigate</span>
           <span><kbd style={{ fontFamily: "monospace", opacity: 0.7 }}>↵</kbd> Insert</span>
           <span style={{ marginLeft: "auto" }}><kbd style={{ fontFamily: "monospace", opacity: 0.7 }}>Esc</kbd> Close</span>

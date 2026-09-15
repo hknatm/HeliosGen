@@ -764,7 +764,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
             <textarea
               ref={textareaRef}
               className={`prompt-ta relative w-full h-full px-3 pt-2.5 pb-8 bg-transparent text-[15px] leading-[1.6] resize-none outline-none overflow-y-auto z-10${textMode !== "text" ? " font-mono" : ""}`}
-              style={{ color: "transparent", caretColor: "white", overscrollBehavior: "contain", ...(textMode !== "text" ? { overflowY: "scroll" as const } : {}) }}
+              style={{ color: "transparent", caretColor: "currentColor", overscrollBehavior: "contain", ...(textMode !== "text" ? { overflowY: "scroll" as const } : {}) }}
               defaultValue={storePrompt}
               readOnly={readOnly}
               onChange={handleChange}
@@ -879,7 +879,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
         {/* ── Inline @mention menu (scales with canvas zoom) ─────────────── */}
         {menuOpen && (
           <div
-            className="absolute left-0 right-0 bg-[#111622] border border-[#2A2A2A] rounded-lg overflow-hidden shadow-xl"
+            className="ui-themed-menu absolute left-0 right-0 bg-[#111622] border border-[#2A2A2A] rounded-lg overflow-hidden shadow-xl"
             style={{ top: "calc(100% + 6px)", zIndex: 50 }}
             onMouseDown={(e) => e.preventDefault()}
           >
@@ -949,7 +949,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
           />
           {/* Panel */}
           <div
-            className="relative z-10 flex flex-col rounded-xl border border-white/[0.08]"
+            className="ui-themed-panel relative z-10 flex flex-col rounded-xl border border-white/[0.08]"
             style={{ width: "min(760px, 100%)", height: "min(520px, 100%)", background: "#0B0E14", boxShadow: "0 24px 80px rgba(0,0,0,0.8)" }}
             onKeyDown={(e) => { if (e.key === "Escape") { setExpandOpen(false); setExpandMentionQuery(null); } }}
           >
@@ -985,7 +985,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
               <textarea
                 ref={modalTextareaRef}
                 className="relative w-full h-full px-4 pt-3 pb-4 bg-transparent text-[14px] leading-[1.7] resize-none outline-none overflow-y-auto"
-                style={{ color: "transparent", caretColor: "white", overscrollBehavior: "contain" }}
+                style={{ color: "transparent", caretColor: "currentColor", overscrollBehavior: "contain" }}
                 readOnly={readOnly}
                 onChange={handleModalChange}
                 onScroll={syncModalScroll}
@@ -1028,7 +1028,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
             {/* @mention menu */}
             {expandMenuOpen && (
               <div
-                className="shrink-0 border-t border-[#1E1E1E] bg-[#111622] overflow-y-auto"
+                className="ui-themed-menu shrink-0 border-t border-[#1E1E1E] bg-[#111622] overflow-y-auto"
                 style={{ maxHeight: 160 }}
                 onMouseDown={(e) => e.preventDefault()}
               >
@@ -1047,7 +1047,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
                   const active = idx === expandSelectedIdx;
                   return (
                     <button key={n.id} onClick={() => insertMentionModal(label)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${active ? "bg-[#1A2010]" : "hover:bg-[#141C28]"}`}>
+                      className={`prompt-mention-option w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors${active ? " prompt-mention-option-active bg-[#1A2010]" : " hover:bg-[#141C28]"}`}>
                       <div className="w-5 h-5 rounded bg-[#1A1A1A] overflow-hidden shrink-0 flex items-center justify-center">
                         {imageUrl ? <img src={thumbSrc(imageUrl, 20)} alt="" className="w-full h-full object-cover" /> :
                           videoUrl ? <video src={videoUrl} autoPlay loop muted playsInline className="w-full h-full" style={{ objectFit: "cover" }} /> :
@@ -1179,20 +1179,20 @@ function syntaxHighlightYaml(yaml: string, knownLabels: string[] = []): ReactNod
 
   lines.forEach((line, i) => {
     if (/^---/.test(line) || /^\.\.\.$/.test(line)) {
-      parts.push(<span key={k++} style={{ color: "#6b7280" }}>{line}</span>);
+      parts.push(<span key={k++} style={{ color: "var(--syntax-punctuation)" }}>{line}</span>);
     } else {
       const keyMatch = line.match(/^(\s*(?:-\s+)?)([\w\-./]+)(\s*:)(.*)/);
       if (keyMatch) {
         const [, indent, key, colon, rest] = keyMatch;
         parts.push(<span key={k++}>{indent}</span>);
-        parts.push(<span key={k++} style={{ color: "#06b6d4" }}>{key}</span>);
-        parts.push(<span key={k++} style={{ color: "#6b7280" }}>{colon}</span>);
+        parts.push(<span key={k++} style={{ color: "var(--syntax-key)" }}>{key}</span>);
+        parts.push(<span key={k++} style={{ color: "var(--syntax-punctuation)" }}>{colon}</span>);
         parts.push(<span key={k++}>{colorYamlValue(rest, k, sorted)}</span>);
         k++;
       } else {
         const listMatch = line.match(/^(\s*-\s+)(.*)/);
         if (listMatch) {
-          parts.push(<span key={k++} style={{ color: "#6b7280" }}>{listMatch[1]}</span>);
+          parts.push(<span key={k++} style={{ color: "var(--syntax-punctuation)" }}>{listMatch[1]}</span>);
           parts.push(<span key={k++}>{colorYamlValue(listMatch[2], k, sorted)}</span>);
           k++;
         } else {
@@ -1225,13 +1225,13 @@ function colorYamlValue(value: string, baseKey: number, sorted: string[] = []): 
   };
 
   if (/^(true|false|yes|no|on|off)$/i.test(trimmed)) {
-    pushValue(main, "#a78bfa");
+    pushValue(main, "var(--syntax-literal)");
   } else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed) || /^0x[\da-fA-F]+$/.test(trimmed)) {
-    pushValue(main, "#fb923c");
+    pushValue(main, "var(--syntax-number)");
   } else if (/^(null|~)$/.test(trimmed)) {
-    pushValue(main, "#a78bfa");
+    pushValue(main, "var(--syntax-literal)");
   } else if (/^['"]/.test(trimmed)) {
-    pushValue(main, "#86efac");
+    pushValue(main, "var(--syntax-string)");
   } else if (trimmed !== "") {
     pushValue(main, "rgba(255,255,255,0.82)");
   } else {
@@ -1275,17 +1275,17 @@ function syntaxHighlightJson(json: string, errorPos?: number, knownLabels: strin
     push(last, m.index);
     if (m[1] !== undefined) {
       if (m[2] !== undefined) {
-        push(m.index, m.index + m[1].length, "#06b6d4");
-        push(m.index + m[1].length, m.index + m[0].length, "#6b7280");
+        push(m.index, m.index + m[1].length, "var(--syntax-key)");
+        push(m.index + m[1].length, m.index + m[0].length, "var(--syntax-punctuation)");
       } else {
-        push(m.index, m.index + m[1].length, "#86efac");
+        push(m.index, m.index + m[1].length, "var(--syntax-string)");
       }
     } else if (m[3] !== undefined) {
-      push(m.index, m.index + m[3].length, "#fb923c");
+      push(m.index, m.index + m[3].length, "var(--syntax-number)");
     } else if (m[4] !== undefined) {
-      push(m.index, m.index + m[4].length, "#a78bfa");
+      push(m.index, m.index + m[4].length, "var(--syntax-literal)");
     } else if (m[5] !== undefined) {
-      push(m.index, m.index + m[5].length, "#6b7280");
+      push(m.index, m.index + m[5].length, "var(--syntax-punctuation)");
     }
     last = re.lastIndex;
   }

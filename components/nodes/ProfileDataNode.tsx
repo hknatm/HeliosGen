@@ -219,7 +219,7 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
   }, []);
 
   return (
-    <div ref={cardRef} className="node-card w-full h-full flex flex-col" style={{ minWidth: 330, overflow: "visible" }}>
+    <div ref={cardRef} className="node-card node-data-card w-full h-full flex flex-col" style={{ minWidth: 330, overflow: "visible" }}>
       <CornerResizer minWidth={310} minHeight={260} />
       <span className="node-above-label">{data.label as string}</span>
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
