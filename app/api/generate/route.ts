@@ -9,6 +9,7 @@ import { jobStore } from "@/lib/jobStore";
 import { ensureR2, uploadBuffer } from "@/lib/r2";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { IMAGE_MODELS, validateAzureCustomSize } from "@/lib/modelConfig";
+import { callbackUrl } from "@/lib/localAuth";
 import { getKieTokenForUser } from "@/lib/getKieToken";
 import { getAzureKeyForUser } from "@/lib/getAzureKey";
 import { GUEST_MODE, resolveUserId } from "@/lib/guestMode";
@@ -523,7 +524,12 @@ export async function POST(req: NextRequest) {
   const callbackBase = process.env.CALLBACK_BASE_URL;
   if (!callbackBase) return NextResponse.json({ error: "CALLBACK_BASE_URL is not set" }, { status: 500 });
 
-  const callBackUrl = `${callbackBase.replace(/\/$/, "")}/api/callback`;
+  let callBackUrl: string;
+  try {
+    callBackUrl = GUEST_MODE ? callbackUrl(callbackBase) : `${callbackBase.replace(/\/$/, "")}/api/callback`;
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid callback configuration" }, { status: 500 });
+  }
 
   try {
     const { apiInput } = cfg;

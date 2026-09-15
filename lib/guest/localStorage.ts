@@ -5,6 +5,7 @@ import https from "node:https";
 import http  from "node:http";
 import { lookupAssetHash, storeAssetHash } from "./db";
 import { stripMetadata } from "../mediaMetadata";
+import { providerAssetUrl } from "../localAuth";
 
 const GENERATED_DIR = join(process.cwd(), "public", "generated");
 
@@ -83,7 +84,8 @@ export async function uploadDataUrl(dataUrl: string, folder: string): Promise<st
  *  won't resolve — prefix it with the public callback URL only for the
  *  outbound provider request. Stored results always remain same-origin paths. */
 function toPublicUrl(path: string, base = process.env.CALLBACK_BASE_URL?.replace(/\/$/, "")): string {
-  return base && path.startsWith("/") ? `${base}${path}` : path;
+  if (!base || !path.startsWith("/")) return path;
+  return providerAssetUrl(path, base);
 }
 
 export async function ensureStorage(url: string, folder: string): Promise<string> {

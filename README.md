@@ -163,7 +163,12 @@ Fill your `.env.local`:
 ```env
 HELIOS_MODE=local
 KIE_API_KEY=your_key
+# Origin only: no path, query string, or fragment.
 CALLBACK_BASE_URL=https://xxxx.ngrok-free.app
+HELIOS_ADMIN_PASSWORD_HASH=generated_scrypt_hash
+HELIOS_SESSION_SECRET=generated_random_secret
+KIE_CALLBACK_SECRET=another_generated_random_secret
+HELIOS_TRUST_PROXY=false
 ```
 
 Supabase and R2 environment variables are not required in this mode. Metadata is
@@ -173,6 +178,21 @@ settings are also stored in this SQLite database, so they are shared by
 `localhost`, ngrok, and other URLs that reach the same server. Existing
 installations using `GUEST_MODE=true` remain supported as a compatibility alias. On first database access, an existing
 `data/guest-db.json` is imported into SQLite once and left unchanged as a backup.
+
+Generate the password hash and two independent secrets before starting:
+
+```bash
+pnpm local-auth:hash 'use-a-long-unique-password'
+openssl rand -base64 48 # HELIOS_SESSION_SECRET
+openssl rand -base64 48 # KIE_CALLBACK_SECRET
+```
+
+The local app login fails closed until the password hash and session secret are configured; Kie generation also requires the separate callback secret.
+The owner session lasts 12 hours; rotating `HELIOS_SESSION_SECRET` invalidates
+all existing sessions. Every page and browser-facing API requires the owner login. Local reference assets sent to Kie receive a separate signed URL that expires after 24 hours. Kie.ai receives a
+secret-bearing callback URL automatically; `/api/callback` rejects missing,
+invalid, unknown, or already-settled callbacks. Previously shared local workflow
+links now require the owner login too.
 
 Start ngrok:
 
@@ -194,10 +214,12 @@ pnpm start
 ```
 
 This is a Node.js server deployment, not a static export. Generated media and
-local persistence require a writable, persistent filesystem. Local mode does
-not authenticate API routes, so treat it as a trusted single-user service. If
-it is internet-accessible, put an authenticated reverse proxy in front of the
-app; expose only the callback endpoint when possible.
+local persistence require a writable, persistent filesystem. Local mode uses a signed, 12-hour, HTTP-only owner session. Keep Next.js bound
+behind a TLS reverse proxy, do not expose its internal port directly, and add
+reverse-proxy rate limits for `/api/auth/local-login` and `/api/callback`.
+HeliosGen also applies a conservative in-process login limit (five failures,
+then a 15-minute cooldown). Set `HELIOS_TRUST_PROXY=true` only when the trusted
+proxy overwrites `X-Real-IP`; otherwise the safer global login bucket is used.
 
 ---
 

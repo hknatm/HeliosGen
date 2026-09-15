@@ -747,6 +747,11 @@ export function AppSidebar() {
     clearSessions();
   };
 
+  const signOutLocalOwner = async () => {
+    await fetch("/api/auth/local-logout", { method: "POST" });
+    window.location.assign("/login");
+  };
+
   const { sessions: allSessions, deleteSession } = useChatSessionStore();
   const isGuestMode = process.env.NEXT_PUBLIC_GUEST_MODE === "true";
   const sessions = (user || isGuestMode) ? allSessions : [];
@@ -1098,10 +1103,17 @@ export function AppSidebar() {
               Settings
             </DropdownMenuItem>
 
-            {/* Sign out / Sign in — hidden in guest mode */}
-            {process.env.NEXT_PUBLIC_GUEST_MODE !== "true" && (
+            <DropdownMenuSeparator className="!bg-white/[0.07] !my-0 !mx-0" />
+            {process.env.NEXT_PUBLIC_GUEST_MODE === "true" ? (
+              <DropdownMenuItem
+                className="rounded-none px-4 pb-4 pt-3 text-[14px] text-white/60 hover:text-white focus:text-white focus:bg-white/[0.06] cursor-pointer"
+                onClick={signOutLocalOwner}
+              >
+                <LogOut size={14} className="mr-2 opacity-60" />
+                Sign out
+              </DropdownMenuItem>
+            ) : (
               <>
-                <DropdownMenuSeparator className="!bg-white/[0.07] !my-0 !mx-0" />
                 {user ? (
                   <DropdownMenuItem
                     className="rounded-none px-4 pb-4 pt-3 text-[14px] text-white/60 hover:text-white focus:text-white focus:bg-white/[0.06] cursor-pointer"
