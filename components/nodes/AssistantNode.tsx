@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
-import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT, getSystemPrompt } from "@/lib/systemPrompt";
+import { COMPOSER_OUTPUT_CONTRACT, loadSystemPromptSettings, resolveAgentSystemPrompt, type SystemPromptPreset } from "@/lib/systemPrompt";
 import { resolveComposerConnections, buildComposerContext, buildComposerPrompt } from "@/lib/composerSources";
 import { resolveInputs } from "@/lib/executor";
 
@@ -59,6 +59,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const localPrompt = (data.localPrompt as string) ?? "";
   const connectedPrompt = useMemo(() => resolveInputs(id, nodes, edges).prompt ?? "", [edges, id, nodes]);
   const model = (data.model as string) ?? "claude-sonnet-4-6";
+  const systemPromptId = typeof data.systemPromptId === "string" ? data.systemPromptId : undefined;
 
   // Connected structured context (Variables / Style / Brand) — the AI Agent
   // accepts BOTH an ordinary editable text prompt AND structured context.
@@ -73,6 +74,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
     )
   ), [structuredContext]);
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
+  const [systemPromptPresets, setSystemPromptPresets] = useState<SystemPromptPreset[]>(() => loadSystemPromptSettings().presets);
   const modelOptions = [
     ...MODELS,
     ...customModels.filter((m) => m.enabled !== false).map((item) => ({ id: customModelId(item.id), label: item.name })),
@@ -83,6 +85,15 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
     window.addEventListener("aiui-custom-provider-models-changed", refresh);
     return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
   }, []);
+
+  useEffect(() => {
+    const refresh = () => setSystemPromptPresets(loadSystemPromptSettings().presets);
+    window.addEventListener("aiui-system-prompts-changed", refresh);
+    return () => window.removeEventListener("aiui-system-prompts-changed", refresh);
+  }, []);
+
+  const selectedSystemPrompt = systemPromptPresets.find((preset) => preset.id === systemPromptId);
+  const missingSystemPrompt = !!systemPromptId && !selectedSystemPrompt;
 
   const [viewMode, setViewMode] = useState<"input" | "output">("input");
   const [loading, setLoading] = useState(false);
@@ -180,7 +191,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         body: JSON.stringify({
           prompt: buildAgentPrompt(localPrompt, connectedPrompt, connectedValues),
           model,
-          systemPrompt: hasContext ? buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT) : getSystemPrompt("agent"),
+          systemPrompt: resolveAgentSystemPrompt(systemPromptId, hasContext ? COMPOSER_OUTPUT_CONTRACT : undefined),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
@@ -234,7 +245,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       setLoading(false);
       abortRef.current = null;
     }
-  }, [busy, canGenerate, hasPrompt, localPrompt, connectedPrompt, id, updateNodeData, model, hasContext, connectedValues]);
+  }, [busy, canGenerate, hasPrompt, localPrompt, connectedPrompt, id, updateNodeData, model, hasContext, connectedValues, systemPromptId, setViewMode]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -251,6 +262,9 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       <CornerResizer minWidth={200} minHeight={120} />
 
       <span className="node-above-label">{data.label as string}</span>
+      <span className={`agent-prompt-badge${missingSystemPrompt ? " agent-prompt-badge-missing" : ""}`} title={missingSystemPrompt ? "The selected preset was deleted. Global default will be used." : selectedSystemPrompt?.tags.join(", ") || "Global default system prompt"}>
+        {missingSystemPrompt ? "Missing preset · Global default" : selectedSystemPrompt?.name ?? "Global default"}
+      </span>
 
       {/* ── Action bar ─────────────────────────────────────────────────── */}
       <div
@@ -426,7 +440,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           {/* ── Bottom controls ────────────────────────────────────────── */}
           <div
             ref={modelBarRef}
-            className="absolute bottom-0 inset-x-0 px-2.5 pb-1.5 pt-1 flex items-center justify-between z-[1001]"
+            className="absolute bottom-0 inset-x-0 px-2.5 pb-1.5 pt-1 flex items-center justify-between gap-2 z-[1001]"
             onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Model dropdown */}
@@ -463,6 +477,21 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 </div>
               )}
             </div>
+
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">System prompt preset</span>
+              <select
+                aria-label="System prompt preset"
+                value={systemPromptId ?? ""}
+                disabled={readOnly || busy}
+                onChange={(event) => updateNodeData(id, { systemPromptId: event.target.value || undefined })}
+                className={`agent-prompt-select${missingSystemPrompt ? " agent-prompt-select-missing" : ""}`}
+              >
+                <option value="">Global default</option>
+                {missingSystemPrompt && <option value={systemPromptId}>Missing preset</option>}
+                {systemPromptPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+              </select>
+            </label>
 
             {/* Generate / Stop */}
             {!readOnly && (busy ? (

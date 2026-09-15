@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useChatSessionStore } from "./chatSessionStore";
 import { useWorkflowStore } from "./store";
+import { loadTheme, normalizeTheme, saveTheme } from "./theme";
 
 /**
  * Focused settings sync helper for local mode.
@@ -28,12 +29,15 @@ const LOCAL_STORAGE_KEYS: Record<string, string> = {
   modelProviders: "aiui-model-providers",
   textFonts: "aiui-text-fonts",
   textRenderingSettings: "aiui-text-rendering-settings",
+  theme: "aiui-theme",
 };
 
 function readLocal(key: string): unknown {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEYS[key]);
-    return raw ? JSON.parse(raw) : undefined;
+    if (!raw) return undefined;
+    if (key === "theme") return raw;
+    return JSON.parse(raw);
   } catch {
     return undefined;
   }
@@ -41,7 +45,7 @@ function readLocal(key: string): unknown {
 
 function writeLocal(key: string, value: unknown) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEYS[key], JSON.stringify(value));
+    localStorage.setItem(LOCAL_STORAGE_KEYS[key], key === "theme" ? String(value) : JSON.stringify(value));
     // A same-window localStorage write does not emit the browser `storage`
     // event. Notify active pickers/panels so server-hydrated settings become
     // visible immediately on a new origin (for example, an ngrok URL).
@@ -52,6 +56,7 @@ function writeLocal(key: string, value: unknown) {
       modelProviders: "aiui-providers-changed",
       textFonts: "aiui-text-fonts-changed",
       textRenderingSettings: "aiui-text-rendering-settings-changed",
+      theme: "aiui-theme-changed",
     };
     const event = eventByKey[key];
     if (event) window.dispatchEvent(new CustomEvent(event));
@@ -123,6 +128,11 @@ const SETTINGS: Record<string, SettingAccessor> = {
     read: () => readLocal("textRenderingSettings"),
     write: (v) => writeLocal("textRenderingSettings", v),
     isEmpty: (v) => !v || typeof v !== "object",
+  },
+  theme: {
+    read: loadTheme,
+    write: (v) => saveTheme(normalizeTheme(v)),
+    isEmpty: (v) => v !== "dark" && v !== "light",
   },
   preferredTextModel: {
     read: readPreferredModel,
@@ -209,6 +219,7 @@ export function useSettingsSync() {
       ["aiui-providers-changed", "modelProviders"],
       ["aiui-text-fonts-changed", "textFonts"],
       ["aiui-text-rendering-settings-changed", "textRenderingSettings"],
+      ["aiui-theme-changed", "theme"],
     ];
     const handlers = eventMap.map(([evt, key]) => {
       const handler = () => { if (hydratedRef.current) pushSetting(key); };

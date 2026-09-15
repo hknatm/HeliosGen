@@ -4,9 +4,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useWorkflowStore, Space } from "@/lib/store";
-import { makeUGCTemplate } from "@/lib/templates";
 import { timeAgo } from "@/lib/useSpaceSync";
-import { WorkflowHero } from "@/components/WorkflowHero";
 import DotCanvasBackground from "@/components/ui/DotCanvasBackground";
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
@@ -149,97 +147,8 @@ const CSS = `
   }
   .wsd-new-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
-  .wsd-tmpl {
-    position: relative;
-    background: #0C0F16;
-    border: 1px dashed rgba(99,102,241,0.3);
-    border-radius: 18px;
-    overflow: hidden;
-    cursor: pointer;
-    display: flex; flex-direction: column;
-    transition: transform 240ms cubic-bezier(.22,1,.36,1),
-                box-shadow  240ms cubic-bezier(.22,1,.36,1),
-                border-color 240ms ease,
-                background 240ms ease;
-  }
-  .wsd-tmpl:hover {
-    border-color: rgba(99,102,241,0.55);
-    background: #0e1019;
-    box-shadow:
-      0 0 0 1px rgba(99,102,241,0.15),
-      0 16px 48px rgba(0,0,0,0.6);
-    transform: translateY(-4px);
-  }
-  .wsd-tmpl:hover .wsd-tmpl-orb {
-    box-shadow: 0 0 32px rgba(99,102,241,0.45), 0 0 0 1px rgba(255,255,255,0.15) inset;
-  }
+
 `;
-
-// ── Template card ─────────────────────────────────────────────────────────────
-
-const TEMPLATE_PREVIEWS = [
-  "https://pub-73a59b956f1c4a7db2934522c13d8027.r2.dev/workflow-template/1.png",
-  "https://pub-73a59b956f1c4a7db2934522c13d8027.r2.dev/workflow-template/2.png",
-  "https://pub-73a59b956f1c4a7db2934522c13d8027.r2.dev/workflow-template/3.png",
-  "https://pub-73a59b956f1c4a7db2934522c13d8027.r2.dev/workflow-template/4.png",
-];
-
-function TemplateCard({ onLoad, onReset }: { onLoad: () => void; onReset: (e: React.MouseEvent) => void }) {
-  return (
-    <div
-      className="wsd-tmpl"
-      role="button"
-      tabIndex={0}
-      onClick={onLoad}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onLoad(); }}
-    >
-      <div className="wsd-thumbs">
-        {TEMPLATE_PREVIEWS.map((url, i) => (
-          <div key={i} className="wsd-thumb-cell">
-            {/* Template assets are public; load directly so self-hosted/custom CDN domains work without Next image allow-list changes. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          </div>
-        ))}
-        <div className="wsd-thumb-overlay" />
-      </div>
-      <div style={{
-        padding: "14px 16px 16px",
-        borderTop: "1px solid rgba(99,102,241,0.1)",
-        display: "flex", flexDirection: "column", gap: "10px",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: "15px", fontWeight: 600, color: "#fff", letterSpacing: "-0.015em" }}>
-            UGC Template
-          </div>
-          <button
-            onClick={onReset}
-            title="Reset template"
-            style={{
-              appearance: "none", border: "1px solid rgba(99,102,241,0.25)", background: "rgba(99,102,241,0.08)",
-              borderRadius: "7px", width: "28px", height: "28px", display: "grid", placeItems: "center",
-              cursor: "pointer", color: "rgba(99,102,241,0.7)", transition: "all 140ms ease", flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(99,102,241,0.2)"; e.currentTarget.style.color = "#818cf8"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(99,102,241,0.08)"; e.currentTarget.style.color = "rgba(99,102,241,0.7)"; }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
-          </button>
-        </div>
-        <div style={{
-          display: "flex", alignItems: "center", gap: "6px",
-          fontSize: "10px", fontWeight: 500, letterSpacing: "0.04em",
-          color: "rgba(99,102,241,0.6)", textTransform: "uppercase",
-        }}>
-          <span>4× Image → 4× Video</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Media collection ──────────────────────────────────────────────────────────
 
@@ -611,7 +520,6 @@ export default function WorkflowDashboard() {
   const spaces = useWorkflowStore((s) => s.spaces);
   const createSpace = useWorkflowStore((s) => s.createSpace);
   const switchSpace = useWorkflowStore((s) => s.switchSpace);
-  const deleteSpace = useWorkflowStore((s) => s.deleteSpace);
   const setAuthModalOpen = useWorkflowStore((s) => s.setAuthModalOpen);
   const [user, setUser] = useState<boolean | null>(null);
 
@@ -636,30 +544,10 @@ export default function WorkflowDashboard() {
     router.push(`/workflow/${newId}`);
   };
 
-  const TEMPLATE_NAME = "UGC Template";
-
-  const spawnFreshTemplate = () => {
-    const store = useWorkflowStore.getState();
-    const existing = store.spaces.find((sp) => sp.name === TEMPLATE_NAME);
-    if (existing) {
-      if (store.spaces.length === 1) store.createSpace("Space 1");
-      deleteSpace(existing.id);
-    }
-    createSpace(TEMPLATE_NAME, makeUGCTemplate());
-    const newId = useWorkflowStore.getState().activeSpaceId;
-    router.push(`/workflow/${newId}`);
-  };
-
-  const handleLoadTemplate = () => spawnFreshTemplate();
-
-  const handleResetTemplate = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    spawnFreshTemplate();
-  };
 
   const sorted = user
     ? [...spaces]
-        .filter((sp) => sp.nodes.length > 0 && sp.name !== TEMPLATE_NAME)
+        .filter((sp) => sp.nodes.length > 0)
         .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
     : [];
 
@@ -678,7 +566,6 @@ export default function WorkflowDashboard() {
 
       <div style={{ paddingBottom: "80px" }}>
 
-        <WorkflowHero />
 
         {/* ── Page header ── */}
         <section style={{
@@ -734,7 +621,6 @@ export default function WorkflowDashboard() {
           padding: "0 32px",
         }}>
           <CreateCard onCreate={handleCreate} />
-          <TemplateCard onLoad={handleLoadTemplate} onReset={handleResetTemplate} />
           {sorted.map((sp) => (
             <SpaceCard key={sp.id} space={sp} onOpen={() => openSpace(sp.id)} />
           ))}

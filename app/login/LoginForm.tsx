@@ -30,7 +30,7 @@ export default function LoginForm({ nextPath }: { nextPath: string }) {
   return (
     <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <label htmlFor="owner-password" className="text-sm font-medium text-white/80">Owner password</label>
+        <label htmlFor="owner-password" className="text-sm font-medium text-foreground">Owner password</label>
         <input
           id="owner-password"
           name="password"
@@ -40,11 +40,11 @@ export default function LoginForm({ nextPath }: { nextPath: string }) {
           required
           maxLength={1024}
           aria-describedby={error ? "login-error" : "login-help"}
-          className="h-12 rounded-lg border border-white/15 bg-black/30 px-4 text-base text-white outline-none transition focus-visible:border-amber-300 focus-visible:ring-2 focus-visible:ring-amber-300/30"
+          className="h-12 rounded-lg border border-border bg-background px-4 text-base text-foreground outline-none transition focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
         />
-        <p id="login-help" className="text-xs leading-5 text-white/50">This private workspace is available only to its owner.</p>
+        <p id="login-help" className="text-xs leading-5 text-muted-foreground">This private workspace is available only to its owner.</p>
       </div>
-      {error && <p id="login-error" role="alert" className="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-200">{error}</p>}
+      {error && <p id="login-error" role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       <button
         type="submit"
         disabled={pending}

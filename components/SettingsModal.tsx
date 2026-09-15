@@ -15,7 +15,8 @@ import {
   setCustomProviderModelEnabled,
   syncCustomProviderModels,
 } from "@/lib/customProvider";
-import { DEFAULT_SYSTEM_PROMPTS, loadSystemPrompts, saveSystemPrompts, resetSystemPrompts, type SystemPromptId } from "@/lib/systemPrompt";
+import { DEFAULT_AGENT_PROMPT, loadSystemPromptSettings, saveSystemPromptSettings, type SystemPromptPreset, type SystemPromptSettings } from "@/lib/systemPrompt";
+import { loadTheme, saveTheme, THEME_CHANGED_EVENT, type AppTheme } from "@/lib/theme";
 import { fontOptions, loadTextFonts, saveTextFonts, type TextFont } from "@/lib/textFonts";
 import { DEFAULT_TEXT_RENDERING_SETTINGS, loadTextRenderingSettings, normalizeTextRenderingSettings, saveTextRenderingSettings, type TextRenderingSettings } from "@/lib/textRenderingSettings";
 
@@ -109,9 +110,18 @@ export function saveAzureTextModelName(name: string) {
 
 const IS_DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
-type NavId = "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "text-prompts" | "text-rendering" | "debug";
+type NavId = "appearance" | "api-keys" | "image-models" | "video-models" | "text-models" | "custom-provider" | "text-prompts" | "text-rendering" | "debug";
 
 const NAV_BASE: { id: NavId; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "appearance",
+    label: "Appearance",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41" />
+      </svg>
+    ),
+  },
   {
     id: "api-keys",
     label: "API Keys",
@@ -1555,141 +1565,139 @@ function CustomProviderPanel() {
   );
 }
 
-/* ─── Text Prompts panel ────────────────────────────────────────────────────── */
+/* ─── Appearance panel ─────────────────────────────────────────────────────── */
 
-interface TextPromptSpec {
-  id: SystemPromptId;
-  title: string;
-  description: string;
-}
-
-const TEXT_PROMPT_SPECS: TextPromptSpec[] = [
-  { id: "agent", title: "AI Agent", description: "One reusable system prompt for every AI surface — workspace chat, Quick Assist, the AI Agent node, workflow-run rewrites, and the structured visual- and copy-composing instructions (whose output contracts stay code-owned)." },
-];
-
-function TextPromptsPanel() {
-  const [drafts, setDrafts] = useState<Record<SystemPromptId, string>>(() => loadSystemPrompts());
-  const [savedFlash, setSavedFlash] = useState(false);
-  const [resetFlash, setResetFlash] = useState(false);
-  const feedback = savedFlash ? "AI Agent prompt saved" : resetFlash ? "AI Agent prompt reset to default" : "";
+function AppearancePanel() {
+  const [theme, setTheme] = useState<AppTheme>(() => loadTheme());
 
   useEffect(() => {
-    const refresh = () => setDrafts(loadSystemPrompts());
-    window.addEventListener("aiui-system-prompts-changed", refresh);
-    return () => window.removeEventListener("aiui-system-prompts-changed", refresh);
+    const refresh = () => setTheme(loadTheme());
+    window.addEventListener(THEME_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(THEME_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
   }, []);
 
-  const handleSave = () => {
-    saveSystemPrompts(drafts);
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1500);
-  };
-
-  const handleReset = () => {
-    const next = { ...DEFAULT_SYSTEM_PROMPTS };
-    setDrafts(next);
-    resetSystemPrompts();
-    setResetFlash(true);
-    setTimeout(() => setResetFlash(false), 1500);
+  const chooseTheme = (next: AppTheme) => {
+    setTheme(next);
+    saveTheme(next);
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-      {/* Header */}
+    <div className="settings-panel-stack">
       <div>
-        <h2 style={{ fontSize: "17px", fontWeight: 600, color: "rgba(255,255,255,0.9)", margin: 0, lineHeight: 1.2 }}>
-          Text Prompts
-        </h2>
-        <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.28)", marginTop: "6px", lineHeight: 1.5 }}>
-          Edit the system prompts used across text/chat features. Changes are stored locally in your browser.
-        </p>
+        <h2 className="settings-heading">Appearance</h2>
+        <p className="settings-description">Choose the interface contrast that works best for your workspace. Your choice is remembered on this browser and synchronized in local mode.</p>
+      </div>
+      <fieldset className="settings-section-card">
+        <legend className="settings-section-title">Color theme</legend>
+        <div className="theme-options">
+          {(["light", "dark"] as const).map((option) => (
+            <button key={option} type="button" aria-pressed={theme === option} onClick={() => chooseTheme(option)} className={`theme-option${theme === option ? " theme-option-active" : ""}`}>
+              <span className={`theme-preview theme-preview-${option}`} aria-hidden="true"><span /><span /></span>
+              <span><strong>{option === "light" ? "Light" : "Dark"}</strong><small>{option === "light" ? "Bright canvas and neutral surfaces" : "Low-light creative workspace"}</small></span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
+/* ─── Text Prompts panel ────────────────────────────────────────────────────── */
+
+function uid(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function TextPromptsPanel() {
+  const [drafts, setDrafts] = useState<SystemPromptSettings>(() => loadSystemPromptSettings());
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [feedback, setFeedback] = useState("");
+
+  useEffect(() => {
+    const refresh = () => setDrafts(loadSystemPromptSettings());
+    const refreshFromStorage = (event: StorageEvent) => {
+      if (event.key === "aiui-system-prompts") refresh();
+    };
+    window.addEventListener("aiui-system-prompts-changed", refresh);
+    window.addEventListener("storage", refreshFromStorage);
+    return () => {
+      window.removeEventListener("aiui-system-prompts-changed", refresh);
+      window.removeEventListener("storage", refreshFromStorage);
+    };
+  }, []);
+
+  const updatePreset = (id: string, patch: Partial<SystemPromptPreset>) => {
+    setDrafts((current) => ({ ...current, presets: current.presets.map((preset) => preset.id === id ? { ...preset, ...patch } : preset) }));
+  };
+
+  const addPreset = () => {
+    if (drafts.presets.length >= 100) return;
+    const preset: SystemPromptPreset = { id: uid("prompt"), name: "New prompt", tags: [], content: drafts.agent };
+    setDrafts((current) => ({ ...current, presets: [...current.presets, preset] }));
+    setFeedback("New prompt added. Name it and save changes.");
+  };
+
+  const duplicatePreset = (preset: SystemPromptPreset) => {
+    if (drafts.presets.length >= 100) return;
+    setDrafts((current) => ({ ...current, presets: [...current.presets, { ...preset, id: uid("prompt"), name: `${preset.name} copy`.slice(0, 80) }] }));
+  };
+
+  const handleSave = () => {
+    saveSystemPromptSettings(drafts);
+    setSavedFlash(true);
+    setFeedback("System prompts saved");
+    setTimeout(() => setSavedFlash(false), 1500);
+  };
+
+  return (
+    <div className="settings-panel-stack">
+      <div>
+        <h2 className="settings-heading">System prompts</h2>
+        <p className="settings-description">Set the global AI behavior, then create named presets that can be selected on individual AI Agent nodes. Tags help organize presets and are not sent to the model.</p>
       </div>
 
-      {/* Prompt editors */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        {TEXT_PROMPT_SPECS.map((spec, i) => (
-          <div
-            key={spec.id}
-            style={{
-              display: "flex", flexDirection: "column", gap: "8px",
-              padding: "16px",
-              background: i % 2 === 0 ? "rgba(167,139,250,0.04)" : "rgba(74,222,128,0.04)",
-              border: i % 2 === 0 ? "1px solid rgba(167,139,250,0.14)" : "1px solid rgba(74,222,128,0.14)",
-              borderRadius: "12px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span
-                style={{
-                  display: "inline-block", width: "6px", height: "6px", borderRadius: "50%",
-                  background: i % 2 === 0 ? "#a78bfa" : "#5EEAD4", flexShrink: 0,
-                }}
-              />
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
-                {spec.title}
-              </span>
-            </div>
-            <p id={`text-prompt-${spec.id}-description`} style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.5 }}>
-              {spec.description}
-            </p>
-            <label htmlFor={`text-prompt-${spec.id}`} className="sr-only">{spec.title} system prompt</label>
-            <textarea
-              id={`text-prompt-${spec.id}`}
-              aria-describedby={`text-prompt-${spec.id}-description`}
-              value={drafts[spec.id]}
-              onChange={(e) => setDrafts((prev) => ({ ...prev, [spec.id]: e.target.value }))}
-              rows={5}
-              spellCheck={false}
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: "7px",
-                padding: "9px 11px",
-                fontSize: "12px",
-                lineHeight: 1.5,
-                color: "rgba(255,255,255,0.8)",
-                outline: "none",
-                fontFamily: "inherit",
-                resize: "vertical",
-                minHeight: "96px",
-              }}
-              onFocus={(e) => { (e.target as HTMLTextAreaElement).style.borderColor = "rgba(255,255,255,0.2)"; }}
-              onBlur={(e)  => { (e.target as HTMLTextAreaElement).style.borderColor = "rgba(255,255,255,0.08)"; }}
-            />
+      <section className="settings-section-card">
+        <div className="settings-section-title">Global default</div>
+        <p id="global-agent-description" className="settings-description">Used by chat, Quick Assist, and AI Agent nodes that do not choose a preset. Code-owned output contracts remain enforced for structured tasks.</p>
+        <label htmlFor="global-agent-prompt" className="sr-only">Global default system prompt</label>
+        <textarea id="global-agent-prompt" aria-describedby="global-agent-description" value={drafts.agent} onChange={(event) => setDrafts((current) => ({ ...current, agent: event.target.value }))} rows={6} spellCheck={false} className="settings-textarea" />
+        <button type="button" className="settings-button settings-button-secondary" onClick={() => setDrafts((current) => ({ ...current, agent: DEFAULT_AGENT_PROMPT }))}>Restore default text</button>
+      </section>
+
+      <section className="settings-panel-stack" aria-labelledby="prompt-presets-heading">
+        <div className="settings-row settings-row-between">
+          <div>
+            <h3 id="prompt-presets-heading" className="settings-section-title">Agent presets</h3>
+            <p className="settings-description">Each preset is available from the System prompt selector on AI Agent nodes.</p>
           </div>
-        ))}
-      </div>
+          <button type="button" className="settings-button settings-button-primary" onClick={addPreset} disabled={drafts.presets.length >= 100}>Add prompt</button>
+        </div>
 
-      {/* Actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <span role="status" aria-live="polite" className="sr-only">{feedback}</span>
-        <button
-          id="text-prompts-save"
-          onClick={handleSave}
-          style={{
-            padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer",
-            background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.85)",
-            fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap",
-            transition: "background 140ms ease, color 140ms ease",
-          }}
-        >
-          {savedFlash ? "Saved" : "Save prompts"}
-        </button>
-        <button
-          id="text-prompts-reset"
-          onClick={handleReset}
-          style={{
-            padding: "8px 16px", borderRadius: "8px",
-            border: "1px solid rgba(239,68,68,0.3)",
-            background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.7)",
-            cursor: "pointer", fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap",
-            transition: "background 140ms ease, color 140ms ease",
-          }}
-        >
-          {resetFlash ? "Reset" : "Reset to defaults"}
-        </button>
+        {drafts.presets.length >= 100 && <p role="alert" className="settings-description">The preset limit is 100. Delete a preset before adding another.</p>}
+        {drafts.presets.length === 0 ? (
+          <div className="settings-empty">No prompt presets yet. Add one when an agent needs a specialized role or policy.</div>
+        ) : drafts.presets.map((preset) => (
+          <article key={preset.id} className="settings-section-card settings-prompt-card">
+            <div className="settings-grid-two">
+              <label className="settings-field">Name<input aria-label="Prompt name" value={preset.name} maxLength={80} onChange={(event) => updatePreset(preset.id, { name: event.target.value })} className="settings-input" /></label>
+              <label className="settings-field">Tags<input aria-label={`${preset.name} tags`} value={preset.tags.join(", ")} placeholder="brand, product, concise" onChange={(event) => updatePreset(preset.id, { tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 12) })} className="settings-input" /><span className="settings-field-hint">Up to 12 comma-separated tags</span></label>
+            </div>
+            <label className="settings-field">System prompt<textarea aria-label={`${preset.name} system prompt`} value={preset.content} rows={6} spellCheck={false} onChange={(event) => updatePreset(preset.id, { content: event.target.value })} className="settings-textarea" /></label>
+            <div className="settings-row">
+              <button type="button" className="settings-button settings-button-secondary" disabled={drafts.presets.length >= 100} onClick={() => duplicatePreset(preset)}>Duplicate</button>
+              <button type="button" className="settings-button settings-button-danger" onClick={() => setDrafts((current) => ({ ...current, presets: current.presets.filter((item) => item.id !== preset.id) }))}>Delete</button>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <div className="settings-row settings-row-between">
+        <span role="status" aria-live="polite" className="settings-feedback">{feedback}</span>
+        <button id="text-prompts-save" type="button" className="settings-button settings-button-primary" onClick={handleSave}>{savedFlash ? "Saved" : "Save changes"}</button>
       </div>
     </div>
   );
@@ -1839,7 +1847,7 @@ function DebugPanel() {
 /* ─── Main modal ─────────────────────────────────────────────────────────────── */
 
 export default function SettingsModal({ onClose }: SettingsModalProps) {
-  const [activeNav, setActiveNav]             = useState<NavId>("api-keys");
+  const [activeNav, setActiveNav]             = useState<NavId>("appearance");
   const [modelProviders, setModelProviders]   = useState<Record<string, ProviderId>>({});
   const [azureDeployments, setAzureDeployments] = useState<Record<string, string>>({});
   const [azureBaseUrl, setAzureBaseUrl]               = useState("");
@@ -2182,6 +2190,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               padding: "28px 28px 40px",
             }}
           >
+            {activeNav === "appearance" && <AppearancePanel />}
             {activeNav === "api-keys" && (
               <ApiKeysPanel
                 azureBaseUrl={azureBaseUrl}

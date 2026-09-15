@@ -7,6 +7,8 @@ import KieBanner from "@/components/KieBanner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cookies, headers } from "next/headers";
+import ThemeProvider from "@/components/ThemeProvider";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,15 +51,19 @@ export default async function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${doto.variable} antialiased dark`}
-      style={{ height: "100%" }}
+      data-theme="dark"
+      suppressHydrationWarning
+      style={{ height: "100%", colorScheme: "dark" }}
     >
-      <body className="bg-black text-white h-full overflow-hidden">
+      <head><script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} /></head>
+      <body className="app-shell h-full overflow-hidden">
+        <ThemeProvider />
         {loginPage ? children : (
           <>
             <TooltipProvider>
               <SidebarProvider defaultOpen={sidebarOpen} className="h-full">
                 <AppSidebar />
-                <SidebarInset style={{ backgroundColor: "transparent" }} className="flex flex-col min-h-0 min-w-0 border-l border-r border-t border-white/[0.08] mx-2 mt-2 rounded-tl-xl rounded-tr-xl">
+                <SidebarInset style={{ backgroundColor: "transparent" }} className="app-main-panel flex flex-col min-h-0 min-w-0 border mx-2 mt-2 rounded-tl-xl rounded-tr-xl">
                   <KieBanner />
                   <div className="md:hidden flex items-center h-10 px-3 border-b border-white/[0.08] shrink-0">
                     <SidebarTrigger className="text-white/50 hover:text-white hover:bg-white/[0.05] transition-colors rounded-lg p-1.5 [&_svg]:size-4" />

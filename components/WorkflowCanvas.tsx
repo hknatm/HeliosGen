@@ -29,14 +29,12 @@ import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
 import { loadCustomProviderConfig } from "@/lib/customProvider";
-import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT, COPY_OUTPUT_CONTRACT, getSystemPrompt } from "@/lib/systemPrompt";
+import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT, COPY_OUTPUT_CONTRACT, resolveAgentSystemPrompt } from "@/lib/systemPrompt";
 import { hasRenderableText, rendererInputSignature, resolveTextRendererContent, resolveTextRendererInputs } from "@/lib/textRendererSources";
 import { buildCopyComposerPrompt, hasRefinedCopy, mergeRefinedCopy, parseCopyJson, rawCopySignature, resolveCopyComposerInputs, validateRefinedCopy } from "@/lib/copyComposer";
 import { loadTextFonts, resolveTextFont } from "@/lib/textFonts";
 import { loadTextRenderingSettings } from "@/lib/textRenderingSettings";
 
-import { motion } from "motion/react";
-import TypewriterHeading from "@/components/ui/TypewriterHeading";
 import PromptNode from "./nodes/PromptNode";
 import ImageInputNode from "./nodes/ImageInputNode";
 import VideoInputNode from "./nodes/VideoInputNode";
@@ -1601,9 +1599,10 @@ export default function WorkflowCanvas() {
             body: JSON.stringify({
               prompt,
               model,
-              systemPrompt: connectedValues.length
-                ? buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT)
-                : getSystemPrompt("agent"),
+              systemPrompt: resolveAgentSystemPrompt(
+                typeof node.data.systemPromptId === "string" ? node.data.systemPromptId : undefined,
+                connectedValues.length ? COMPOSER_OUTPUT_CONTRACT : undefined,
+              ),
               ...(customProvider ? { customProvider } : {}),
             }),
           });
@@ -2004,141 +2003,24 @@ export default function WorkflowCanvas() {
           </svg>
         )}
 
-        {/* ── Welcome screen (empty state) ─────────────────────────────────────── */}
+        {/* ── Empty canvas actions ────────────────────────────────────────── */}
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-            {/* Ambient glow */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                background: "radial-gradient(ellipse 70% 50% at 50% 52%, rgba(45,212,191,0.06) 0%, transparent 70%)",
-              }}
-            />
-
-            <div className="flex flex-col items-center gap-12">
-              {/* Logo + title */}
-              <div className="flex flex-col items-center gap-4 pointer-events-none">
-                {/* Helios star icon */}
-                <svg width="44" height="44" viewBox="0 0 20 20" fill="#2DD4BF" stroke="none">
-                  <path d="M11.8525 4.21651L11.7221 3.2387C11.6906 3.00226 11.4889 2.82568 11.2504 2.82568C11.0118 2.82568 10.8102 3.00226 10.7786 3.23869L10.6483 4.21651C10.2658 7.0847 8.00939 9.34115 5.14119 9.72358L4.16338 9.85396C3.92694 9.88549 3.75037 10.0872 3.75037 10.3257C3.75037 10.5642 3.92694 10.7659 4.16338 10.7974L5.14119 10.9278C8.00938 11.3102 10.2658 13.5667 10.6483 16.4349L10.7786 17.4127C10.8102 17.6491 11.0118 17.8257 11.2504 17.8257C11.4889 17.8257 11.6906 17.6491 11.7221 17.4127L11.8525 16.4349C12.2349 13.5667 14.4913 11.3102 17.3595 10.9278L18.3374 10.7974C18.5738 10.7659 18.7504 10.5642 18.7504 10.3257C18.7504 10.0872 18.5738 9.88549 18.3374 9.85396L17.3595 9.72358C14.4913 9.34115 12.2349 7.0847 11.8525 4.21651Z" />
-                </svg>
-
-                <TypewriterHeading text="Build awesome workflows" />
-                <motion.p
-                  initial={{ filter: "blur(8px)", opacity: 0 }}
-                  animate={{ filter: "blur(0px)", opacity: 1 }}
-                  transition={{ duration: 0.9, delay: 0.15 }}
-                  style={{ color: "rgba(255,255,255,0.35)", fontSize: "14px", margin: 0 }}
-                >
-                  Pick a node below to start building
-                </motion.p>
-              </div>
-
-              {/* Node cards */}
-              <motion.div
-                className="flex items-stretch gap-4 pointer-events-auto"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.25 }}
-              >
+            <div className="flex flex-col items-center gap-5">
+              <p className="pointer-events-none" style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>Add your first node</p>
+              <div className="empty-canvas-actions flex items-stretch gap-4 pointer-events-auto">
                 {[
-                  {
-                    type: "promptNode",
-                    label: "Text",
-                    desc: "Write & refine prompts",
-                    accent: "#4ee5b7",
-                    icon: <MessageSquare size={20} strokeWidth={1.6} />,
-                  },
-                  {
-                    type: "generateNode",
-                    label: "Image Generator",
-                    desc: "Generate images from a text prompt",
-                    accent: "#ff955a",
-                    icon: <Sparkles size={20} strokeWidth={1.6} />,
-                  },
-                  {
-                    type: "videoGeneratorNode",
-                    label: "Video Generator",
-                    desc: "Generate videos from a text prompt",
-                    accent: "#a78bfa",
-                    icon: <Clapperboard size={20} strokeWidth={1.6} />,
-                  },
+                  { type: "promptNode", label: "Text", desc: "Write or connect a prompt", accent: "#4ee5b7", icon: <MessageSquare size={20} strokeWidth={1.6} /> },
+                  { type: "generateNode", label: "Image Generator", desc: "Generate an image", accent: "#ff955a", icon: <Sparkles size={20} strokeWidth={1.6} /> },
+                  { type: "videoGeneratorNode", label: "Video Generator", desc: "Generate a video", accent: "#a78bfa", icon: <Clapperboard size={20} strokeWidth={1.6} /> },
                 ].map(({ type, label, desc, icon, accent }) => (
-                  <button
-                    key={type}
-                    onClick={() => addNodeAtCenter(type)}
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-start",
-                      gap: "16px",
-                      width: "210px",
-                      padding: "24px 22px 26px",
-                      borderRadius: "18px",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background: "rgba(255,255,255,0.03)",
-                      cursor: "pointer",
-                      outline: "none",
-                      transition: "transform 200ms ease, box-shadow 220ms ease, border-color 220ms ease, background 220ms ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      const el = e.currentTarget;
-                      el.style.transform = "translateY(-4px)";
-                      el.style.boxShadow = `0 0 0 1px ${accent}35, 0 16px 40px rgba(0,0,0,0.4)`;
-                      el.style.borderColor = `${accent}35`;
-                      el.style.background = `rgba(255,255,255,0.05)`;
-                    }}
-                    onMouseLeave={(e) => {
-                      const el = e.currentTarget;
-                      el.style.transform = "translateY(0)";
-                      el.style.boxShadow = "";
-                      el.style.borderColor = "rgba(255,255,255,0.08)";
-                      el.style.background = "rgba(255,255,255,0.03)";
-                    }}
-                  >
-                    {/* Icon badge */}
-                    <div style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "44px",
-                      height: "44px",
-                      borderRadius: "12px",
-                      background: `${accent}22`,
-                      color: accent,
-                      flexShrink: 0,
-                    }}>
-                      {icon}
-                    </div>
-
-                    {/* Label + desc */}
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "7px" }}>
-                      <span style={{
-                        fontSize: "15px", fontWeight: 700,
-                        color: "rgba(255,255,255,0.92)",
-                        letterSpacing: "-0.2px",
-                        lineHeight: 1.2,
-                      }}>
-                        {label}
-                      </span>
-                      <span style={{ fontSize: "12.5px", color: "rgba(255,255,255,0.42)", fontWeight: 400, lineHeight: 1.4 }}>
-                        {desc}
-                      </span>
-                    </div>
+                  <button key={type} onClick={() => addNodeAtCenter(type)} className="empty-canvas-action">
+                    <span className="empty-canvas-action-icon" style={{ color: accent, background: `${accent}18` }}>{icon}</span>
+                    <span className="empty-canvas-action-copy"><strong>{label}</strong><small>{desc}</small></span>
                   </button>
                 ))}
-              </motion.div>
-
-              <motion.p
-                className="text-[11px] tracking-wide pointer-events-none select-none"
-                style={{ color: "rgba(255,255,255,0.15)" }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-              >
-                or drag &amp; drop images and videos onto the canvas
-              </motion.p>
+              </div>
+              <p style={{ color: "var(--muted)", fontSize: 11, margin: 0 }}>or drag and drop media onto the canvas</p>
             </div>
           </div>
         )}

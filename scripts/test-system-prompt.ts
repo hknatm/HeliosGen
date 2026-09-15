@@ -26,6 +26,10 @@ async function main() {
     loadSystemPrompts,
     saveSystemPrompts,
     resetSystemPrompts,
+    loadSystemPromptSettings,
+    saveSystemPromptSettings,
+    resolveAgentSystemPrompt,
+    normalizeSystemPromptSettings,
   } = mod;
 
   console.log("── Single editable AI Agent prompt (no browser) ─────────────");
@@ -57,7 +61,7 @@ async function main() {
   storage.setItem("aiui-system-prompts", JSON.stringify({ chat: "LEGACY-CHAT-VALUE" }));
   const migrated = loadSystemPrompts();
   assert(migrated.agent === "LEGACY-CHAT-VALUE", "legacy 'chat' stored prompt migrates into the single agent prompt");
-  assert(Object.keys(migrated).length === 1, "only the single agent prompt is exposed (no per-surface keys)");
+  assert(Object.keys(migrated).length === 1, "legacy compatibility still exposes one global agent prompt");
 
   storage.setItem("aiui-system-prompts", JSON.stringify({
     chat: "You are an elite AI prompt crafter specialized in image and video generation prompts.\n\nOLD DEFAULT",
@@ -74,14 +78,31 @@ async function main() {
   const afterReset = loadSystemPrompts();
   assert(afterReset.agent === DEFAULT_AGENT_PROMPT, "cleared storage falls back to the default agent prompt");
 
-  // saveSystemPrompts writes only the agent key.
   saveSystemPrompts({ agent: "MY-CUSTOM-AGENT" });
-  const saved = JSON.parse(storage.getItem("aiui-system-prompts") || "{}");
-  assert(saved.agent === "MY-CUSTOM-AGENT", "saveSystemPrompts persists the single agent key");
-  assert(Object.keys(saved).length === 1, "saveSystemPrompts writes only one key");
+  let saved = JSON.parse(storage.getItem("aiui-system-prompts") || "{}");
+  assert(saved.agent === "MY-CUSTOM-AGENT", "saveSystemPrompts persists the global agent prompt");
+  assert(saved.version === 2 && Array.isArray(saved.presets), "saveSystemPrompts upgrades storage to the preset-aware v2 shape");
+
+  saveSystemPromptSettings({ version: 2, agent: "GLOBAL", presets: [{ id: "brand", name: "Brand voice", tags: ["brand", "campaign"], content: "PRESET" }] });
+  const settings = loadSystemPromptSettings();
+  assert(settings.presets[0]?.name === "Brand voice" && settings.presets[0]?.tags.length === 2, "named and tagged prompt presets round-trip");
+  assert(resolveAgentSystemPrompt("brand") === "PRESET", "an AI Agent preset resolves to its prompt content");
+  assert(resolveAgentSystemPrompt("missing") === "GLOBAL", "a missing preset safely falls back to the global prompt");
+  assert(resolveAgentSystemPrompt("brand", "CONTRACT") === "PRESET\n\nCONTRACT", "code-owned contracts append to the selected preset");
+  const normalized = normalizeSystemPromptSettings({ agent: "BASE", presets: [
+    { id: "same", name: "  First  ", tags: [" brand ", "brand", ""], content: "  ONE  " },
+    { id: "same", name: "Duplicate", tags: [], content: "TWO" },
+    { id: "empty", name: "", tags: [], content: "THREE" },
+    null,
+  ] });
+  assert(normalized.presets.length === 1, "invalid and duplicate preset records are removed");
+  assert(normalized.presets[0].name === "First" && normalized.presets[0].content === "ONE", "preset names and content are trimmed");
+  assert(normalized.presets[0].tags.length === 1 && normalized.presets[0].tags[0] === "brand", "preset tags are trimmed and deduplicated");
 
   resetSystemPrompts();
-  assert(storage.getItem("aiui-system-prompts") === null, "resetSystemPrompts clears storage");
+  saved = JSON.parse(storage.getItem("aiui-system-prompts") || "{}");
+  assert(saved.agent === DEFAULT_AGENT_PROMPT, "resetSystemPrompts restores only the global prompt default");
+  assert(saved.presets.length === 1, "resetSystemPrompts preserves user-created presets");
 
   // (noPrior is intentionally referenced to keep TS happy about the variable)
   void noPrior;
