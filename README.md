@@ -173,7 +173,8 @@ HELIOS_TRUST_PROXY=false
 
 Supabase and R2 environment variables are not required in this mode. Metadata is
 stored in `data/heliosgen.db`, and generated media remains under
-`public/generated/`. Chats, workflow canvases, and ordinary non-secret app
+`public/generated/`. Both directories must be writable and persisted across
+builds, deployments, and container restarts. Chats, workflow canvases, and ordinary non-secret app
 settings are also stored in this SQLite database, so they are shared by
 `localhost`, ngrok, and other URLs that reach the same server. Existing
 installations using `GUEST_MODE=true` remain supported as a compatibility alias. On first database access, an existing

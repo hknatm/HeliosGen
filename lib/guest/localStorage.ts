@@ -1,10 +1,11 @@
-import { writeFile, mkdir } from "fs/promises";
+import { access, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID, createHash } from "crypto";
 import { lookupAssetHash, storeAssetHash } from "./db";
 import { stripMetadata } from "../mediaMetadata";
 import { providerAssetUrl } from "../localAuth";
 import { fetchRemoteMedia } from "../remoteMedia";
+import { generatedAssetPathFromUrl } from "../localGeneratedAsset";
 
 const GENERATED_DIR = join(process.cwd(), "public", "generated");
 
@@ -36,7 +37,15 @@ export async function uploadBuffer(
   const hash = hashBuffer(buffer);
   if (deduplicate) {
     const cached = lookupAssetHash(hash);
-    if (cached) return cached;
+    const cachedPath = cached ? generatedAssetPathFromUrl(cached) : null;
+    if (cachedPath) {
+      try {
+        await access(cachedPath);
+        return cached!;
+      } catch {
+        console.warn("[local/asset-cache] Ignoring missing cached file:", cached);
+      }
+    }
   }
 
   await mkdir(join(GENERATED_DIR, folder), { recursive: true });
