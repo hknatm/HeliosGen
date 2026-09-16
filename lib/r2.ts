@@ -1,11 +1,10 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
-import https from "node:https";
-import http  from "node:http";
 import { hashBuffer, lookupAssetHash, storeAssetHash } from "./assetCache";
 import { GUEST_MODE } from "./guestMode";
 import { stripMetadata } from "./mediaMetadata";
 import * as localStore from "./guest/localStorage";
+import { fetchRemoteMedia } from "./remoteMedia";
 
 let _s3: S3Client | null = null;
 
@@ -80,32 +79,14 @@ export async function uploadBuffer(
   return url;
 }
 
-/** Fetch a remote URL to a Buffer using Node.js core (immune to Next.js AbortSignal patching). */
-function fetchToBuffer(url: string, maxRedirects = 5): Promise<{ buf: Buffer; contentType: string }> {
-  return new Promise((resolve, reject) => {
-    if (maxRedirects <= 0) return reject(new Error("Too many redirects"));
-    const u   = new URL(url);
-    const mod = u.protocol === "https:" ? https : (http as unknown as typeof https);
-    mod.get(url, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return fetchToBuffer(res.headers.location, maxRedirects - 1).then(resolve).catch(reject);
-      }
-      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-        return reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
-      }
-      const chunks: Buffer[] = [];
-      res.on("data",  (c: Buffer) => chunks.push(c));
-      res.on("end",   () => resolve({ buf: Buffer.concat(chunks), contentType: res.headers["content-type"] ?? "image/jpeg" }));
-      res.on("error", reject);
-    }).on("error", reject);
-  });
-}
-
 /** Fetch a remote URL, upload to R2 (or local disk in guest mode), return URL. */
 export async function mirrorToR2(sourceUrl: string, folder: string): Promise<string> {
   if (GUEST_MODE) return localStore.mirrorToStorage(sourceUrl, folder);
-  const { buf, contentType } = await fetchToBuffer(sourceUrl);
-  return uploadBuffer(buf, contentType, folder);
+  const { buffer, contentType } = await fetchRemoteMedia(sourceUrl, {
+    maxBytes: folder === "videos" ? 200 * 1024 * 1024 : 30 * 1024 * 1024,
+    totalTimeoutMs: folder === "videos" ? 180_000 : 120_000,
+  });
+  return uploadBuffer(buffer, contentType, folder);
 }
 
 /** Upload a base64 data URL to R2 (or local disk in guest mode), return URL. */

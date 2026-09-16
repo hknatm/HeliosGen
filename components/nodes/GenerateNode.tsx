@@ -506,8 +506,24 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
     if (!taskId || status !== "running") return;
 
     let cancelled = false;
+    const deadline = Date.now() + 12 * 60 * 1000;
+
+    const failPolling = (error: string) => {
+      const storeNode = useWorkflowStore.getState().nodes.find(n => n.id === id);
+      const gens = [...((storeNode?.data?.generations as GenEntry[] | undefined) ?? [])] as GenEntry[];
+      const slot = storeNode?.data?.currentGenIdx as number ?? gens.length - 1;
+      gens[slot] = { error };
+      updateNodeData(id, { status: "error", errorMsg: error, taskId: undefined, generations: gens, currentGenIdx: slot });
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      browserNotify("Node failed", error);
+    };
 
     const doPoll = async () => {
+      if (Date.now() >= deadline) {
+        failPolling("Generation timed out");
+        return;
+      }
       try {
         const res = await fetch(`/api/job-status?taskId=${taskId}`);
         const json = await res.json();
@@ -533,23 +549,9 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
           document.removeEventListener("visibilitychange", onVisible);
           browserNotify("Node complete", (data.label as string | undefined) ?? "Image generated");
         } else if (json.status === "error") {
-          const storeNode = useWorkflowStore.getState().nodes.find(n => n.id === id);
-          const gens = [...((storeNode?.data?.generations as GenEntry[] | undefined) ?? [])] as GenEntry[];
-          const slot = storeNode?.data?.currentGenIdx as number ?? gens.length - 1;
-          gens[slot] = { error: json.error ?? "Generation failed" };
-          updateNodeData(id, { status: "error", errorMsg: json.error, taskId: undefined, generations: gens, currentGenIdx: slot });
-          clearInterval(interval);
-          document.removeEventListener("visibilitychange", onVisible);
-          browserNotify("Node failed", json.error ?? "Generation failed");
+          failPolling(json.error ?? "Generation failed");
         } else if (json.status === "not_found") {
-          const storeNode = useWorkflowStore.getState().nodes.find(n => n.id === id);
-          const gens = [...((storeNode?.data?.generations as GenEntry[] | undefined) ?? [])] as GenEntry[];
-          const slot = storeNode?.data?.currentGenIdx as number ?? gens.length - 1;
-          gens[slot] = { error: "Job expired or unknown" };
-          updateNodeData(id, { status: "error", errorMsg: "Job expired or unknown", taskId: undefined, generations: gens, currentGenIdx: slot });
-          clearInterval(interval);
-          document.removeEventListener("visibilitychange", onVisible);
-          browserNotify("Node failed", "Job expired or unknown");
+          failPolling("Job expired or unknown");
         }
         // "pending" → keep polling
       } catch {

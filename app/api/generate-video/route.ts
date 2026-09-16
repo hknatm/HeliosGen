@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   if (!callbackBase) return NextResponse.json({ error: "CALLBACK_BASE_URL is not set" }, { status: 500 });
   let callBackUrl: string;
   try {
-    callBackUrl = GUEST_MODE ? callbackUrl(callbackBase) : `${callbackBase.replace(/\/$/, "")}/api/callback`;
+    callBackUrl = callbackUrl(callbackBase);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid callback configuration" }, { status: 500 });
   }
@@ -357,11 +357,18 @@ export async function POST(req: NextRequest) {
 
   // Debug mode — log payload to server console and return without submitting
   if (debugOnly) {
-    console.log(`[DEBUG] generate-video payload → ${endpoint}`, JSON.stringify(kieBody, null, 2));
-    return NextResponse.json({ debugPayload: kieBody, debugEndpoint: endpoint });
+    const debugPayload = apiInput.useGoogleVeo
+      ? kieBody
+      : { ...kieBody, callBackUrl: "(redacted)" };
+    console.log(`[DEBUG] generate-video payload → ${endpoint}`, JSON.stringify(debugPayload, null, 2));
+    return NextResponse.json({ debugPayload, debugEndpoint: endpoint });
   }
 
-  console.log(`[generate-video] sending to ${endpoint}:`, JSON.stringify(kieBody));
+  console.log(`[generate-video] sending task to ${endpoint}`, {
+    model: effectiveApiId,
+    hasCallback: !apiInput.useGoogleVeo,
+    inputKeys: Object.keys(input),
+  });
   const createRes = await fetch(endpoint, {
     method:  "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -425,7 +432,7 @@ export async function POST(req: NextRequest) {
       reference_image_urls: referenceUrls,
     });
   } else {
-    supabaseAdmin.from("generations").insert({
+    const { error: insertError } = await supabaseAdmin.from("generations").insert({
       task_id:              taskId,
       user_id:              userId,
       generation_type:      "video",
@@ -437,9 +444,12 @@ export async function POST(req: NextRequest) {
       kling_mode:           mode,
       sound:                cfg.sound ? Boolean(sound) : false,
       reference_image_urls: referenceUrls,
-    }).then(({ error }) => {
-      if (error) console.error("[generate-video] supabase insert error:", error.message);
     });
+    if (insertError) {
+      jobStore.set(taskId, { status: "error", error: "Could not persist the generation job." });
+      console.error("[generate-video] supabase insert error:", insertError.message);
+      return NextResponse.json({ error: "Could not persist the generation job." }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ taskId });

@@ -229,6 +229,7 @@ Requirements:
 - Supabase
 - Cloudflare R2
 - Kie.ai API key
+- A separate 32+ character Kie callback secret
 
 ### 3a. Database setup
 
@@ -244,6 +245,7 @@ Create `.env.local`:
 ```env
 HELIOS_MODE=cloud
 CALLBACK_BASE_URL=https://your-domain.com
+KIE_CALLBACK_SECRET=another_generated_random_secret
 
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=

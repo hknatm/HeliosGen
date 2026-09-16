@@ -21,26 +21,29 @@ import * as guestDb from "@/lib/guest/db";
 
 export const maxDuration = 60;
 
-const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
+const MAX_BYTES = 30 * 1024 * 1024; // Reference media should remain bounded for provider upload.
 
 export async function POST(req: NextRequest) {
   try {
     const mimeType = req.headers.get("content-type") ?? "application/octet-stream";
+    if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/") && !mimeType.startsWith("audio/")) {
+      return NextResponse.json({ error: "Only image, video, and audio uploads are supported" }, { status: 415 });
+    }
 
     const contentLength = Number(req.headers.get("content-length") ?? 0);
     if (contentLength > MAX_BYTES) {
-      return NextResponse.json({ error: "File exceeds 100 MB limit" }, { status: 413 });
+      return NextResponse.json({ error: "File exceeds 30 MB limit" }, { status: 413 });
     }
 
     const bytes  = await req.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     if (buffer.byteLength > MAX_BYTES) {
-      return NextResponse.json({ error: "File exceeds 100 MB limit" }, { status: 413 });
+      return NextResponse.json({ error: "File exceeds 30 MB limit" }, { status: 413 });
     }
 
     // ── Upload to R2 (Deduplication happens inside uploadBuffer) ──────────────
-    const folder  = mimeType.startsWith("video/") ? "references" : "uploads";
+    const folder = mimeType.startsWith("image/") ? "uploads" : "references";
     const cdnUrl  = await uploadBuffer(buffer, mimeType, folder);
 
     const userId = await resolveUserId(req);

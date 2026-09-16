@@ -13,6 +13,8 @@
   "include": [
     "../lib/guest/db.ts",
     "../lib/assetSrc.ts",
+    "../lib/callbackPayload.ts",
+    "../lib/remoteMedia.ts",
     "../lib/systemPrompt.ts",
     "../lib/executor.ts",
     "../lib/modelConfig.ts",
@@ -30,6 +32,7 @@
     "../lib/store.ts",
     "test-local-db.ts",
     "test-gallery-utils.ts",
+    "test-callback-payload.ts",
     "test-system-prompt.ts",
     "test-connectivity.ts",
     "test-model-config.ts",

@@ -195,7 +195,7 @@ function referenceImageType(buffer: Buffer, sourceUrl: string): { mime: string; 
  * upload the bytes to Kie's temporary file service and submit its download URL
  * instead. The temporary upload is free and expires automatically.
  */
-async function uploadReferenceImageToKie(sourceUrl: string, apiKey: string, index: number): Promise<string> {
+async function uploadReferenceImageToKieOnce(sourceUrl: string, apiKey: string, index: number): Promise<string> {
   const buffer = await fetchBuffer(sourceUrl);
   const { mime, extension } = referenceImageType(buffer, sourceUrl);
   const form = new FormData();
@@ -228,6 +228,32 @@ async function uploadReferenceImageToKie(sourceUrl: string, apiKey: string, inde
   const parsed = new URL(uploadedUrl);
   if (parsed.protocol !== "https:") throw new Error("Kie reference upload returned an invalid URL.");
   return parsed.toString();
+}
+
+async function uploadReferenceImageToKie(sourceUrl: string, apiKey: string, index: number): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await uploadReferenceImageToKieOnce(sourceUrl, apiKey, index);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 + index * 50));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Kie reference upload failed.");
+}
+
+async function uploadReferenceImagesToKie(sourceUrls: string[], apiKey: string): Promise<string[]> {
+  const results = new Array<string>(sourceUrls.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < sourceUrls.length) {
+      const index = nextIndex++;
+      results[index] = await uploadReferenceImageToKie(sourceUrls[index], apiKey, index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, sourceUrls.length) }, () => worker()));
+  return results;
 }
 
 // codex-imagegen (https://github.com/jdmnk/codex-imagegen-cli) only accepts these four sizes.
@@ -585,7 +611,7 @@ export async function POST(req: NextRequest) {
 
   let callBackUrl: string;
   try {
-    callBackUrl = GUEST_MODE ? callbackUrl(callbackBase) : `${callbackBase.replace(/\/$/, "")}/api/callback`;
+    callBackUrl = callbackUrl(callbackBase);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid callback configuration" }, { status: 500 });
   }
@@ -597,11 +623,7 @@ export async function POST(req: NextRequest) {
     const hasImages = r2ImageUrls.length > 0;
     const resolvedApiId = !hasImages && cfg.textOnlyApiId ? cfg.textOnlyApiId : cfg.apiId;
     const providerImageUrls = GUEST_MODE && hasImages
-      ? await Promise.all(
-          r2ImageUrls
-            .slice(0, cfg.maxImages)
-            .map((url, index) => uploadReferenceImageToKie(url, kieToken, index)),
-        )
+      ? await uploadReferenceImagesToKie(r2ImageUrls.slice(0, cfg.maxImages), kieToken)
       : r2ImageUrls.slice(0, cfg.maxImages);
 
     const input: Record<string, unknown> = {
@@ -645,7 +667,7 @@ export async function POST(req: NextRequest) {
         reference_image_urls: r2ImageUrls,
       });
     } else {
-      supabaseAdmin.from("generations").insert({
+      const { error: insertError } = await supabaseAdmin.from("generations").insert({
         task_id:              taskId,
         user_id:              currentUserId,
         generation_type:      "image",
@@ -655,9 +677,12 @@ export async function POST(req: NextRequest) {
         aspect_ratio:         aspectRatio,
         quality,
         reference_image_urls: r2ImageUrls,
-      }).then(({ error }) => {
-        if (error) console.error("[generate] supabase insert error:", error.message);
       });
+      if (insertError) {
+        jobStore.set(taskId, { status: "error", error: "Could not persist the generation job." });
+        console.error("[generate] supabase insert error:", insertError.message);
+        return NextResponse.json({ error: "Could not persist the generation job." }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ taskId, referenceImageUrls: r2ImageUrls });

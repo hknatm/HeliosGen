@@ -14,6 +14,7 @@ const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export default function ImageInputNode({ id, data, selected }: NodeProps<ImageInputNodeType>) {
   const updateNodeData  = useWorkflowStore((s) => s.updateNodeData);
+  const addToast        = useWorkflowStore((s) => s.addToast);
   const updateNodeSize  = useWorkflowStore((s) => s.updateNodeSize);
   const edges           = useWorkflowStore((s) => s.edges);
   const sourceConnected = edges.some((e) => e.source === id);
@@ -51,6 +52,7 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
   const [lightboxVisible, setLightboxVisible]     = useState(false);
   const [lightboxImgLoaded, setLightboxImgLoaded] = useState(false);
   const [blurSrc, setBlurSrc]                     = useState<string | null>(null);
+  const [uploadingNow, setUploadingNow]           = useState(false);
 
   const openLightbox = useCallback(() => {
     // Grab the currentSrc of the already-rendered node image (cached low-quality URL)
@@ -111,6 +113,16 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
   const loadFile = useCallback(
     async (file: File) => {
       if (DEMO_MODE) { useWorkflowStore.getState().setAuthModalOpen(true); return; }
+      if (!file.type.startsWith("image/")) {
+        addToast("Choose a valid image file.", "error");
+        return;
+      }
+      if (file.size > 30 * 1024 * 1024) {
+        addToast("Reference images must be 30 MB or smaller.", "error");
+        return;
+      }
+      setUploadingNow(true);
+      updateNodeData(id, { uploadError: undefined });
       // Read as ArrayBuffer — needed for hashing and direct binary upload
       const bytes = await file.arrayBuffer();
       const hash  = await sha256Hex(bytes);
@@ -127,11 +139,19 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
         if (cdnUrl) {
           // Already uploaded — use existing URL directly
           const img = new window.Image();
-          img.onload = () => updateNodeData(id, {
-            inputImage:        cdnUrl,
-            imageNaturalRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
-            r2Url:             cdnUrl,
-          });
+          img.onload = () => {
+            updateNodeData(id, {
+              inputImage:        cdnUrl,
+              imageNaturalRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
+              r2Url:             cdnUrl,
+            });
+            setUploadingNow(false);
+          };
+          img.onerror = () => {
+            setUploadingNow(false);
+            updateNodeData(id, { hasError: true, uploadError: "Cached reference image could not be loaded" });
+            addToast("Cached reference image could not be loaded", "error");
+          };
           img.src = cdnUrl;
           return;
         }
@@ -156,16 +176,21 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
           "Content-Type": file.type || "image/jpeg",
           ...authHeaders,
         };
-        const res     = await fetch("/api/upload-asset", { method: "POST", headers: uploadHeaders, body: bytes });
-        const { cdnUrl } = await res.json() as { cdnUrl?: string };
-        if (cdnUrl) {
-          updateNodeData(id, { r2Url: cdnUrl, inputImage: cdnUrl });
+        const res = await fetch("/api/upload-asset", { method: "POST", headers: uploadHeaders, body: bytes });
+        const payload = await res.json().catch(() => ({})) as { cdnUrl?: string; error?: string };
+        if (!res.ok || !payload.cdnUrl) {
+          throw new Error(payload.error || `Upload failed (${res.status})`);
         }
-      } catch {
-        // R2 unavailable — blob URL stays as fallback until page reload
+        updateNodeData(id, { r2Url: payload.cdnUrl, inputImage: payload.cdnUrl, uploadError: undefined });
+        setUploadingNow(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Reference image upload failed";
+        setUploadingNow(false);
+        updateNodeData(id, { hasError: true, uploadError: message });
+        addToast(message, "error");
       }
     },
-    [id, updateNodeData]
+    [id, updateNodeData, addToast]
   );
 
   const onDrop = useCallback(
@@ -182,10 +207,7 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
 
   // Local uploading state: true from mount (if no r2Url yet) until CDN URL arrives.
   // Using local state avoids any timing gap between store update and derived value.
-  const [isUploading, setIsUploading] = useState(!data.r2Url && !!data.inputImage);
-  useEffect(() => {
-    if (data.r2Url) setIsUploading(false);
-  }, [data.r2Url]);
+  const isUploading = uploadingNow || (!data.r2Url && !!data.inputImage && !data.uploadError);
 
   // The "settled" bottom layer — never changes mid-transition
   const [baseSrc, setBaseSrc] = useState(canonicalSrc);
