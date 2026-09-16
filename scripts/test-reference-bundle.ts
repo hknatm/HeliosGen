@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import type { Edge, Node } from "@xyflow/react";
 import type { NodeData } from "../lib/store";
+import { persistedNodeData } from "../lib/referencePersistence";
+import { resolveInputs } from "../lib/executor";
 import {
   numberedReferencePrompt,
   resolveAgentSignature,
@@ -14,12 +16,50 @@ const image = (id: string, name: string, url: string): Node<NodeData> => ({
 });
 const agent: Node<NodeData> = { id: "agent", type: "assistantNode", position: { x: 0, y: 0 }, data: { label: "AI AGENT", localPrompt: "Compose", model: "gpt-5-2" } };
 const generator: Node<NodeData> = { id: "gen", type: "generateNode", position: { x: 0, y: 0 }, data: { label: "Image Generator" } };
-const nodes = [image("a", "Product", "https://example.com/a.png"), image("b", "Style", "https://example.com/b.png"), agent, generator];
+const multi: Node<NodeData> = {
+  id: "multi", type: "imageInputNode", position: { x: 0, y: 0 }, data: {
+    label: "References",
+    referenceImages: [
+      { id: "one", r2Url: "https://example.com/one.png", name: "Subject", usageNote: "Preserve", status: "ready" },
+      { id: "two", r2Url: "https://example.com/two.png", name: "Style", usageNote: "Lighting only", status: "ready" },
+    ],
+  },
+};
+const nodes = [image("a", "Product", "https://example.com/a.png"), image("b", "Style", "https://example.com/b.png"), multi, agent, generator];
 const agentEdges: Edge[] = [
   { id: "a-agent", source: "a", target: "agent", targetHandle: "references" },
   { id: "b-agent", source: "b", target: "agent", targetHandle: "references" },
 ];
 const refs = resolveReferenceImages("agent", nodes, agentEdges, "references").references;
+const multiRefs = resolveReferenceImages("agent", nodes, [{ id: "multi-agent", source: "multi", target: "agent", targetHandle: "references" }], "references").references;
+assert.deepEqual(multiRefs.map((ref) => ref.name), ["Subject", "Style"]);
+assert.deepEqual(multiRefs.map((ref) => ref.url), ["https://example.com/one.png", "https://example.com/two.png"]);
+const expandedInputs = resolveInputs("gen", [multi, generator], [{ id: "multi-gen", source: "multi", target: "gen", targetHandle: "image" }]);
+assert.deepEqual(expandedInputs.imageUrls, ["https://example.com/one.png", "https://example.com/two.png"]);
+assert.deepEqual(expandedInputs.imageNodeLabels, ["Subject", "Style"]);
+
+const tooManyNode: Node<NodeData> = {
+  id: "too-many", type: "imageInputNode", position: { x: 0, y: 0 }, data: {
+    label: "Too many",
+    referenceImages: Array.from({ length: 17 }, (_, index) => ({ id: String(index), r2Url: `https://example.com/${index}.png`, name: `Ref ${index}`, usageNote: "", status: "ready" })),
+  },
+};
+const tooMany = resolveReferenceImages("agent", [tooManyNode, agent], [{ id: "too-many-edge", source: "too-many", target: "agent", targetHandle: "references" }], "references");
+assert.match(tooMany.error ?? "", /maximum of 16/i);
+assert.deepEqual(tooMany.references, []);
+
+const uploadingNode: Node<NodeData> = {
+  id: "uploading", type: "imageInputNode", position: { x: 0, y: 0 }, data: {
+    label: "Uploading", referenceImages: [{ id: "pending", inputImage: "blob:temporary", name: "Pending", usageNote: "", status: "uploading" }],
+  },
+};
+const pending = resolveReferenceImages("agent", [uploadingNode, agent], [{ id: "pending-edge", source: "uploading", target: "agent", targetHandle: "references" }], "references");
+assert.match(pending.error ?? "", /finish uploading/i);
+const persisted = persistedNodeData(uploadingNode.data);
+assert.equal(persisted.referenceImages?.[0].inputImage, undefined);
+assert.equal(persisted.referenceImages?.[0].status, "error");
+assert.match(persisted.referenceImages?.[0].error ?? "", /interrupted/i);
+assert.equal(persistedNodeData(multi.data).referenceImages?.[0].r2Url, "https://example.com/one.png");
 assert.deepEqual(refs.map((ref) => ref.name), ["Product", "Style"]);
 assert.match(numberedReferencePrompt(refs), /Reference 1 — Product/);
 assert.match(numberedReferencePrompt(refs), /Reference 2 — Style/);

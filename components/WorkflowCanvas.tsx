@@ -536,7 +536,62 @@ export default function WorkflowCanvas() {
       const dropX = (e.clientX - rect.left - panX) / zoom;
       const dropY = (e.clientY - rect.top - panY) / zoom;
 
-      // Lay out multiple files in a row, centred on the drop point.
+      const allImages = files.filter((file) => file.type.startsWith("image/"));
+      const imageFiles = allImages.slice(0, 16);
+      if (allImages.length === files.length) {
+        if (allImages.length > 16) {
+          useWorkflowStore.getState().addToast("A reference node supports up to 16 images. The extra files were not added.", "error");
+        }
+        const size = getDefaultNodeSize("imageInputNode", useWorkflowStore.getState().lastNodeSize);
+        const nodeId = `imageInputNode-${uid()}`;
+        const current = useWorkflowStore.getState().nodes;
+        const referenceImages = imageFiles.map((file, index) => ({
+          id: uid(),
+          inputImage: URL.createObjectURL(file),
+          name: file.name.replace(/\.[^.]+$/, "").slice(0, 80) || `Reference ${index + 1}`,
+          usageNote: "",
+          status: "uploading" as const,
+        }));
+        addNode({
+          id: nodeId,
+          type: "imageInputNode",
+          position: { x: dropX - size.w / 2, y: dropY - size.h / 2 },
+          style: { width: size.w, height: size.h },
+          data: { label: nodeLabel("imageInputNode", current), status: "idle", referenceImages },
+        });
+        imageFiles.forEach(async (file, index) => {
+          const blobUrl = referenceImages[index].inputImage!;
+          try {
+            if (file.size > 30 * 1024 * 1024) throw new Error(`${file.name}: reference images must be 30 MB or smaller.`);
+            const bytes = await file.arrayBuffer();
+            const { data: authData } = await (await import("@/lib/supabase/client")).createClient().auth.getSession();
+            const headers: Record<string, string> = { "Content-Type": file.type || "image/jpeg" };
+            if (authData.session?.access_token) headers.Authorization = `Bearer ${authData.session.access_token}`;
+            const response = await fetch("/api/upload-asset", { method: "POST", headers, body: bytes });
+            const payload = await response.json() as { cdnUrl?: string; error?: string };
+            if (!response.ok || !payload.cdnUrl) throw new Error(payload.error || "Upload failed");
+            const refs = useWorkflowStore.getState().nodes.find((node) => node.id === nodeId)?.data.referenceImages ?? [];
+            updateNodeDataRef.current(nodeId, {
+              referenceImages: refs.map((reference) => reference.id === referenceImages[index].id
+                ? { ...reference, inputImage: payload.cdnUrl, r2Url: payload.cdnUrl, status: "ready" as const }
+                : reference),
+            });
+            URL.revokeObjectURL(blobUrl);
+          } catch (error) {
+            const refs = useWorkflowStore.getState().nodes.find((node) => node.id === nodeId)?.data.referenceImages ?? [];
+            updateNodeDataRef.current(nodeId, {
+              referenceImages: refs.map((reference) => reference.id === referenceImages[index].id
+                ? { ...reference, inputImage: undefined, status: "error" as const, error: error instanceof Error ? error.message : "Upload failed" }
+                : reference),
+            });
+            URL.revokeObjectURL(blobUrl);
+            useWorkflowStore.getState().addToast(error instanceof Error ? error.message : "Upload failed", "error");
+          }
+        });
+        return;
+      }
+
+      // Lay out mixed media or a single file in a row, centred on the drop point.
       // Gap between node edges (canvas units).
       const GAP = 24;
 
@@ -1034,8 +1089,14 @@ export default function WorkflowCanvas() {
         }
         if (connection.targetHandle === "references") {
           if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode") return false;
-          const count = edges.filter((edge) => edge.target === connection.target && edge.targetHandle === "references").length;
-          return count < 16 && !edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === "references");
+          const connectedCount = edges
+            .filter((edge) => edge.target === connection.target && edge.targetHandle === "references")
+            .reduce((total, edge) => {
+              const candidate = nodes.find((node) => node.id === edge.source);
+              return total + (candidate?.type === "imageInputNode" && Array.isArray(candidate.data.referenceImages) ? candidate.data.referenceImages.length : 1);
+            }, 0);
+          const sourceCount = source.type === "imageInputNode" && Array.isArray(source.data.referenceImages) ? source.data.referenceImages.length : 1;
+          return connectedCount + sourceCount <= 16 && !edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === "references");
         }
         if (connection.targetHandle === "prompt") {
           if (source?.type !== "promptNode" && source?.type !== "assistantNode" && source?.type !== "variableNode" && source?.type !== "textContentNode" && source?.type !== "promptComposerNode") return false;
@@ -1083,10 +1144,15 @@ export default function WorkflowCanvas() {
           if (taken) return false;
         }
         if (connection.targetHandle === "image") {
-          const count = edges.filter(
+          const imageEdges = edges.filter(
             (e) => e.target === connection.target && e.targetHandle === "image"
-          ).length;
-          if (count >= 16) return false;
+          );
+          const count = imageEdges.reduce((total, edge) => {
+            const candidate = nodes.find((node) => node.id === edge.source);
+            return total + (candidate?.type === "imageInputNode" && Array.isArray(candidate.data.referenceImages) ? candidate.data.referenceImages.length : 1);
+          }, 0);
+          const sourceCount = source?.type === "imageInputNode" && Array.isArray(source.data.referenceImages) ? source.data.referenceImages.length : 1;
+          if (count + sourceCount > 16) return false;
           const hasBundle = edges.some((edge) => edge.target === connection.target && edge.targetHandle === "image" && nodes.find((candidate) => candidate.id === edge.source)?.type === "assistantNode");
           const addingBundle = source?.type === "assistantNode" && connection.sourceHandle === "refsOut";
           if ((hasBundle && !addingBundle) || (addingBundle && count > 0)) return false;
@@ -1462,6 +1528,11 @@ export default function WorkflowCanvas() {
           continue;
         }
         const upstream = resolveInputs(nodeId, freshGenerationNodes, edges);
+        if (upstream.referenceError) {
+          updateNodeData(nodeId, { status: "error", errorMsg: upstream.referenceError });
+          push(`[${node.id}] skipped — ${upstream.referenceError}`, false);
+          continue;
+        }
         const prompt = upstream.prompt;
         const imageUrls = upstream.imageUrls;
         const connectedImageCount = edges.filter((edge) => edge.target === nodeId && edge.targetHandle === "image").length;

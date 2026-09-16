@@ -129,8 +129,8 @@ export const NODES: Array<{
           <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
         </svg>
       ),
-      label: "Reference Image",
-      description: "Upload or URL source",
+      label: "Reference Images",
+      description: "Ordered images with a name and usage note",
     },
     {
       type: "videoInputNode",
@@ -176,7 +176,7 @@ export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   videoGeneratorNode: { w: 320, h: 220 }, // Safe default for 16:9 + controls
   generateNode: { w: 280, h: 280 },       // 1:1 default
   promptNode: { w: 520, h: 250 },
-  imageInputNode: { w: 200, h: 160 },
+  imageInputNode: { w: 460, h: 420 },
   videoInputNode: { w: 220, h: 180 },
   variableNode: { w: 280, h: 220 },
   brandProfileNode: { w: 330, h: 310 },

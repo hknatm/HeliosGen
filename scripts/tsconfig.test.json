@@ -16,6 +16,7 @@
     "../lib/callbackPayload.ts",
     "../lib/remoteMedia.ts",
     "../lib/referenceBundle.ts",
+    "../lib/referencePersistence.ts",
     "../lib/systemPrompt.ts",
     "../lib/executor.ts",
     "../lib/modelConfig.ts",

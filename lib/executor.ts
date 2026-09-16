@@ -1,6 +1,6 @@
 import { Node, Edge } from "@xyflow/react";
 import { NodeData, TextContent } from "./store";
-import { resolveReferenceImages } from "./referenceBundle";
+import { directReferences, resolveReferenceImages } from "./referenceBundle";
 
 /** Topological sort — returns node ids in execution order */
 export function topoSort(nodes: Node<NodeData>[], edges: Edge[]): string[] {
@@ -125,6 +125,7 @@ export function resolveInputs(
   resources: Array<{ url: string; label: string }>;
   referenceVideoUrls: string[];
   referenceAudioUrls: string[];
+  referenceError?: string;
 } {
   const incoming = edges.filter((e) => e.target === nodeId);
   const result = {
@@ -137,6 +138,7 @@ export function resolveInputs(
     prompt:             undefined as string | undefined,
     referenceVideoUrls: [] as string[],
     referenceAudioUrls: [] as string[],
+    referenceError: undefined as string | undefined,
   };
 
   for (const edge of incoming) {
@@ -166,10 +168,10 @@ export function resolveInputs(
     // "image" handle — direct images or one ordered AI Agent reference bundle.
     if (edge.targetHandle === "image") {
       if (src.type === "assistantNode" && edge.sourceHandle === "refsOut") continue;
-      const imgSrc = resolveImageUrl(src, edge.sourceHandle);
-      if (imgSrc) {
-        result.imageUrls.push(imgSrc);
-        result.imageNodeLabels.push((src.data.referenceName as string | undefined) ?? (src.data.label as string | undefined) ?? "");
+      const refs = directReferences(src, edge.sourceHandle);
+      if (refs.length > 0) {
+        result.imageUrls.push(...refs.map((reference) => reference.url));
+        result.imageNodeLabels.push(...refs.map((reference) => reference.name));
       }
       // Carry upstream prompt if current node doesn't have one
       if ((src.type === "generateNode" || src.type === "videoGeneratorNode") && src.data.prompt && !result.prompt) {
@@ -216,6 +218,7 @@ export function resolveInputs(
     }
   }
   const bundled = resolveReferenceImages(nodeId, nodes, edges, "image");
+  if (bundled.error) result.referenceError = bundled.error;
   if (!bundled.error && bundled.packageSignature) {
     result.imageUrls = bundled.references.map((reference) => reference.url);
     result.imageNodeLabels = bundled.references.map((reference) => reference.name);

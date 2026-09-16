@@ -180,9 +180,56 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
   /* Handle file selected via the Upload button */
   const handleFileSelected = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
+      const selectedFiles = Array.from(e.target.files ?? []);
+      const file = selectedFiles[0];
       if (!file) return;
       e.target.value = "";
+
+      const allImages = selectedFiles.filter((item) => item.type.startsWith("image/"));
+      const imageFiles = allImages.slice(0, 16);
+      if (allImages.length === selectedFiles.length) {
+        if (allImages.length > 16) {
+          useWorkflowStore.getState().addToast("A reference node supports up to 16 images. The extra files were not added.", "error");
+        }
+        const referenceImages = imageFiles.map((item, index) => ({
+          id: uid(),
+          inputImage: URL.createObjectURL(item),
+          name: item.name.replace(/\.[^.]+$/, "").slice(0, 80) || `Reference ${index + 1}`,
+          usageNote: "",
+          status: "uploading" as const,
+        }));
+        const nodeId = addNextToToolbar("imageInputNode", { referenceImages });
+        imageFiles.forEach(async (item, index) => {
+          const blobUrl = referenceImages[index].inputImage!;
+          try {
+            if (item.size > 30 * 1024 * 1024) throw new Error(`${item.name}: reference images must be 30 MB or smaller.`);
+            const bytes = await item.arrayBuffer();
+            const token = await getToken();
+            const headers: Record<string, string> = { "Content-Type": item.type || "image/jpeg" };
+            if (token) headers.Authorization = `Bearer ${token}`;
+            const response = await fetch("/api/upload-asset", { method: "POST", headers, body: bytes });
+            const payload = await response.json() as { cdnUrl?: string; error?: string };
+            if (!response.ok || !payload.cdnUrl) throw new Error(payload.error || "Upload failed");
+            const current = useWorkflowStore.getState().nodes.find((node) => node.id === nodeId)?.data.referenceImages ?? [];
+            useWorkflowStore.getState().updateNodeData(nodeId, {
+              referenceImages: current.map((reference) => reference.id === referenceImages[index].id
+                ? { ...reference, inputImage: payload.cdnUrl, r2Url: payload.cdnUrl, status: "ready" as const }
+                : reference),
+            });
+            URL.revokeObjectURL(blobUrl);
+          } catch (error) {
+            const current = useWorkflowStore.getState().nodes.find((node) => node.id === nodeId)?.data.referenceImages ?? [];
+            useWorkflowStore.getState().updateNodeData(nodeId, {
+              referenceImages: current.map((reference) => reference.id === referenceImages[index].id
+                ? { ...reference, inputImage: undefined, status: "error" as const, error: error instanceof Error ? error.message : "Upload failed" }
+                : reference),
+            });
+            URL.revokeObjectURL(blobUrl);
+            useWorkflowStore.getState().addToast(error instanceof Error ? error.message : "Upload failed", "error");
+          }
+        });
+        return;
+      }
 
       const isVideo = file.type.startsWith("video/");
       const type = isVideo ? "videoInputNode" : "imageInputNode";
@@ -372,6 +419,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         ref={fileInputRef}
         type="file"
         accept="image/*,video/*"
+        multiple
         className="hidden"
         onChange={handleFileSelected}
       />
@@ -441,7 +489,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
                     <CustomRow
                       id="upload"
                       label="Upload"
-                      description="Image or video — auto-detects type"
+                      description="One video or up to 16 ordered reference images"
                       accent="#34d399"
                       bg="#052e16"
                       icon={<Upload size={18} strokeWidth={1.8} />}

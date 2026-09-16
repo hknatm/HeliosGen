@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkflowStore, Space } from "./store";
 import { createClient } from "./supabase/client";
 import { IS_LOCAL_CLIENT } from "./settingsSync";
+import { persistedNodeData } from "./referencePersistence";
 
 const DEBOUNCE_MS = 1_500; // wait 1.5s of inactivity before syncing
 
@@ -26,8 +27,8 @@ export function useSpaceSync() {
   // Do not save a newly opened origin until its initial server read finishes.
   // Otherwise its persisted default placeholder can overwrite shared spaces.
   const initialLoadCompleteRef = useRef(false);
-  const spacesRef      = useRef(spaces);
-  spacesRef.current    = spaces;
+  const spacesRef = useRef(spaces);
+  useEffect(() => { spacesRef.current = spaces; }, [spaces]);
 
   useEffect(() => {
     if (hydrated) return;
@@ -134,7 +135,7 @@ export function useSpaceSync() {
           data:    {
             nodes: sp.nodes.map((n) => ({
               ...n,
-              data: { ...n.data, inputImage: undefined },
+              data: persistedNodeData(n.data),
             })),
             edges:        sp.edges,
             nodeCounters: sp.nodeCounters,
@@ -181,7 +182,7 @@ export function useSpaceSync() {
           data:    {
             nodes: sp.nodes.map((n) => ({
               ...n,
-              data: { ...n.data, inputImage: undefined },
+              data: persistedNodeData(n.data),
             })),
             edges:        sp.edges,
             nodeCounters: sp.nodeCounters,

@@ -13,6 +13,7 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_GUEST_MODE !== "tru
   }
 }
 import { edgeStyle } from "./edgeStyles";
+import { persistedNodeData } from "./referencePersistence";
 import { VIDEO_MODELS } from "./modelConfig";
 import {
   Node,
@@ -42,6 +43,17 @@ export interface TextContent {
   textColor: string;
   accentColor: string;
   alignment: TextAlignment;
+}
+
+export interface ReferenceImageInput {
+  id: string;
+  inputImage?: string;
+  r2Url?: string;
+  naturalRatio?: string;
+  name: string;
+  usageNote: string;
+  status?: "uploading" | "ready" | "error";
+  error?: string;
 }
 
 export interface NodeData extends Record<string, unknown> {
@@ -100,6 +112,8 @@ export interface NodeData extends Record<string, unknown> {
   /** Human-readable identity and usage guidance when this image is used as a reference. */
   referenceName?: string;
   referenceUsage?: string;
+  /** Ordered multi-reference images. Legacy single-image fields above remain readable. */
+  referenceImages?: ReferenceImageInput[];
   /** Atomic AI Agent output: composed prompt plus the unchanged ordered reference bundle. */
   referencePackage?: import("./referenceBundle").AgentReferencePackage;
   agentInputSignature?: string;
@@ -790,17 +804,17 @@ export const useWorkflowStore = create<WorkflowStore>()(
         spaces: s.spaces.map((sp) => ({
           ...sp,
           viewport: sp.viewport,
-          // Strip base64 inputImage — only the durable r2Url survives reload
+          // Strip transient previews; durable per-item URLs survive reload.
           nodes: sp.nodes.map((n) => ({
             ...n,
-            data: { ...n.data, inputImage: undefined },
+            data: persistedNodeData(n.data),
           })),
         })),
         activeSpaceId: s.activeSpaceId,
         // Also persist the live copies so a page refresh rehydrates correctly
         nodes: s.nodes.map((n) => ({
           ...n,
-          data: { ...n.data, inputImage: undefined },
+          data: persistedNodeData(n.data),
         })),
         edges:        s.edges,
         nodeCounters: s.nodeCounters,

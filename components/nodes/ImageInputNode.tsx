@@ -1,9 +1,11 @@
 "use client";
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from "@xyflow/react";
+import { ChevronDown, ChevronUp, ImagePlus, Trash2, Upload } from "lucide-react";
 import CornerResizer from "./CornerResizer";
-import { useWorkflowStore, NodeData } from "@/lib/store";
+import { useWorkflowStore, NodeData, type ReferenceImageInput } from "@/lib/store";
+import { useReadOnly } from "@/lib/readOnlyContext";
 import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 
@@ -11,563 +13,286 @@ import { sha256Hex } from "@/lib/assetHash";
 type ImageInputNodeType = Node<NodeData, "imageInputNode">;
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+const MAX_REFERENCES = 16;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-export default function ImageInputNode({ id, data, selected }: NodeProps<ImageInputNodeType>) {
-  const updateNodeData  = useWorkflowStore((s) => s.updateNodeData);
-  const addToast        = useWorkflowStore((s) => s.addToast);
-  const updateNodeSize  = useWorkflowStore((s) => s.updateNodeSize);
-  const edges           = useWorkflowStore((s) => s.edges);
-  const sourceConnected = edges.some((e) => e.source === id);
-  const fileRef        = useRef<HTMLInputElement>(null);
-  const rootRef        = useRef<HTMLDivElement>(null);
+function legacyReference(data: NodeData): ReferenceImageInput[] {
+  const url = (data.r2Url ?? data.inputImage) as string | undefined;
+  if (!url) return [];
+  return [{
+    id: "legacy-reference",
+    inputImage: data.inputImage as string | undefined,
+    r2Url: data.r2Url as string | undefined,
+    naturalRatio: data.imageNaturalRatio as string | undefined,
+    name: typeof data.referenceName === "string" && data.referenceName.trim() ? data.referenceName : "Reference 1",
+    usageNote: typeof data.referenceUsage === "string" ? data.referenceUsage : "",
+    status: data.uploadError ? "error" : data.r2Url ? "ready" : "uploading",
+    error: typeof data.uploadError === "string" ? data.uploadError : undefined,
+  }];
+}
+
+function normalizedReferences(data: NodeData): ReferenceImageInput[] {
+  if (Array.isArray(data.referenceImages)) return data.referenceImages as ReferenceImageInput[];
+  return legacyReference(data);
+}
+
+export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeType>) {
+  const readOnly = useReadOnly();
+  const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
+  const addToast = useWorkflowStore((state) => state.addToast);
+  const updateNodeSize = useWorkflowStore((state) => state.updateNodeSize);
+  const edges = useWorkflowStore((state) => state.edges);
+  const sourceConnected = edges.some((edge) => edge.source === id);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const updateNodeInternals = useUpdateNodeInternals();
+  const references = useMemo(() => normalizedReferences(data), [data]);
+  const legacyTextConnected = edges.some((edge) => edge.target === id && edge.targetHandle === "decorativeText");
+  const legacyImageConnected = edges.some((edge) => edge.target === id && edge.targetHandle === "decorativeImage");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const dialogTitleId = useId();
+  const lightboxRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lightboxTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  // Persistent ResizeObserver — fires as image aspect ratio drives CSS height changes,
-  // keeping group bounds in sync throughout the transition.
   useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      updateNodeSize(id, el.offsetWidth, el.offsetHeight);
+    const element = rootRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      updateNodeSize(id, element.offsetWidth, element.offsetHeight);
       updateNodeInternals(id);
     });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [id, updateNodeSize, updateNodeInternals]);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [id, updateNodeInternals, updateNodeSize]);
 
-  // Instant hide on deselect
-  const prevSelectedRef = useRef(selected);
-  useEffect(() => {
-    const was = prevSelectedRef.current;
-    prevSelectedRef.current = selected;
-    if (was && !selected && rootRef.current) {
-      const el = rootRef.current;
-      el.classList.add("handles-no-delay");
-      const t = setTimeout(() => el.classList.remove("handles-no-delay"), 200);
-      return () => { clearTimeout(t); el.classList.remove("handles-no-delay"); };
+  const persist = useCallback((next: ReferenceImageInput[]) => {
+    const first = next[0];
+    updateNodeData(id, {
+      referenceImages: next,
+      // Keep legacy consumers and old saved-workflow code functional by exposing item 1.
+      inputImage: first?.inputImage,
+      r2Url: first?.r2Url,
+      imageNaturalRatio: first?.naturalRatio,
+      referenceName: first?.name,
+      referenceUsage: first?.usageNote,
+      uploadError: next.find((item) => item.status === "error")?.error,
+    });
+  }, [id, updateNodeData]);
+
+  const patchItem = useCallback((itemId: string, patch: Partial<ReferenceImageInput>) => {
+    const currentData = useWorkflowStore.getState().nodes.find((node) => node.id === id)?.data ?? data;
+    persist(normalizedReferences(currentData).map((item) => item.id === itemId ? { ...item, ...patch } : item));
+  }, [data, id, persist]);
+
+  const uploadFile = useCallback(async (file: File, itemId = uid()) => {
+    if (DEMO_MODE) { useWorkflowStore.getState().setAuthModalOpen(true); return; }
+    if (!file.type.startsWith("image/")) { addToast(`${file.name}: choose a valid image file.`, "error"); return; }
+    if (file.size > 30 * 1024 * 1024) { addToast(`${file.name}: reference images must be 30 MB or smaller.`, "error"); return; }
+
+    const current = normalizedReferences(useWorkflowStore.getState().nodes.find((node) => node.id === id)?.data ?? data);
+    if (!current.some((item) => item.id === itemId) && current.length >= MAX_REFERENCES) {
+      addToast(`A reference node supports up to ${MAX_REFERENCES} images.`, "error");
+      return;
     }
-  }, [selected]);
-  const nodeImgRef     = useRef<HTMLImageElement>(null);
-  const [lightboxOpen, setLightboxOpen]           = useState(false);
-  const [lightboxVisible, setLightboxVisible]     = useState(false);
-  const [lightboxImgLoaded, setLightboxImgLoaded] = useState(false);
-  const [blurSrc, setBlurSrc]                     = useState<string | null>(null);
-  const [uploadingNow, setUploadingNow]           = useState(false);
 
-  const openLightbox = useCallback(() => {
-    // Grab the currentSrc of the already-rendered node image (cached low-quality URL)
-    setBlurSrc(nodeImgRef.current?.currentSrc ?? null);
-    setLightboxImgLoaded(false);
-    setLightboxOpen(true);
-    requestAnimationFrame(() => setLightboxVisible(true));
-  }, []);
+    const blobUrl = URL.createObjectURL(file);
+    const existing = current.find((item) => item.id === itemId);
+    const draft: ReferenceImageInput = {
+      id: itemId,
+      inputImage: blobUrl,
+      name: existing?.name || file.name.replace(/\.[^.]+$/, "").slice(0, 80) || `Reference ${current.length + 1}`,
+      usageNote: existing?.usageNote ?? "",
+      status: "uploading",
+    };
+    const next = current.some((item) => item.id === itemId)
+      ? current.map((item) => item.id === itemId ? { ...item, ...draft } : item)
+      : [...current, draft];
+    persist(next);
 
-  const closeLightbox = useCallback(() => {
-    setLightboxVisible(false);
-    setTimeout(() => setLightboxOpen(false), 220);
-  }, []);
-
-  // Close lightbox on Escape
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") closeLightbox(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [lightboxOpen, closeLightbox]);
-
-  const setImage = useCallback(
-    (src: string, mimeType?: string) => {
-      const img = new window.Image();
-      img.onload = () => {
-        updateNodeData(id, {
-          inputImage: src,
-          imageNaturalRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
-        });
-
-        // Upload to R2 in the background; swap inputImage for the durable CDN URL
-        if (src.startsWith("data:") || src.startsWith("http")) {
-          (async () => {
-            try {
-              const { data: { session } } = await createClient().auth.getSession();
-              const headers: Record<string, string> = { "Content-Type": "application/json" };
-              if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-
-              const r = await fetch("/api/upload-to-r2", {
-                method: "POST",
-                headers,
-                body: JSON.stringify({ dataUrl: src, folder: "uploads", mimeType }),
-              });
-              const { cdnUrl } = await r.json();
-              if (cdnUrl) updateNodeData(id, { r2Url: cdnUrl });
-            } catch {
-              // R2 unavailable — base64 stays as fallback
-            }
-          })();
-        }
-      };
-      img.src = src;
-    },
-    [id, updateNodeData]
-  );
-
-  const loadFile = useCallback(
-    async (file: File) => {
-      if (DEMO_MODE) { useWorkflowStore.getState().setAuthModalOpen(true); return; }
-      if (!file.type.startsWith("image/")) {
-        addToast("Choose a valid image file.", "error");
-        return;
-      }
-      if (file.size > 30 * 1024 * 1024) {
-        addToast("Reference images must be 30 MB or smaller.", "error");
-        return;
-      }
-      setUploadingNow(true);
-      updateNodeData(id, { uploadError: undefined });
-      // Read as ArrayBuffer — needed for hashing and direct binary upload
+    try {
       const bytes = await file.arrayBuffer();
-      const hash  = await sha256Hex(bytes);
-
+      const hash = await sha256Hex(bytes);
       const { data: { session } } = await createClient().auth.getSession();
-      const authToken = session?.access_token;
       const authHeaders: Record<string, string> = {};
-      if (authToken) authHeaders["Authorization"] = `Bearer ${authToken}`;
+      if (session?.access_token) authHeaders.Authorization = `Bearer ${session.access_token}`;
 
-      // ── Cache lookup: skip upload if already in R2 ───────────────────────
       try {
-        const lookupRes = await fetch(`/api/lookup-asset?hash=${hash}`, { headers: authHeaders });
-        const { cdnUrl } = await lookupRes.json() as { cdnUrl: string | null };
-        if (cdnUrl) {
-          // Already uploaded — use existing URL directly
-          const img = new window.Image();
-          img.onload = () => {
-            updateNodeData(id, {
-              inputImage:        cdnUrl,
-              imageNaturalRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
-              r2Url:             cdnUrl,
-            });
-            setUploadingNow(false);
-          };
-          img.onerror = () => {
-            setUploadingNow(false);
-            updateNodeData(id, { hasError: true, uploadError: "Cached reference image could not be loaded" });
-            addToast("Cached reference image could not be loaded", "error");
-          };
-          img.src = cdnUrl;
+        const lookup = await fetch(`/api/lookup-asset?hash=${hash}`, { headers: authHeaders });
+        const cached = await lookup.json() as { cdnUrl?: string | null };
+        if (lookup.ok && cached.cdnUrl) {
+          patchItem(itemId, { inputImage: cached.cdnUrl, r2Url: cached.cdnUrl, status: "ready", error: undefined });
+          URL.revokeObjectURL(blobUrl);
           return;
         }
-      } catch {
-        // Lookup failed — fall through to normal upload
-      }
+      } catch { /* upload normally */ }
 
-      // ── Show local preview immediately ────────────────────────────────────
-      const blobUrl = URL.createObjectURL(file);
-      const img = new window.Image();
-      img.onload = () => {
-        updateNodeData(id, {
-          inputImage:        blobUrl,
-          imageNaturalRatio: `${img.naturalWidth} / ${img.naturalHeight}`,
-        });
-      };
-      img.src = blobUrl;
+      const response = await fetch("/api/upload-asset", {
+        method: "POST",
+        headers: { "Content-Type": file.type || "image/jpeg", ...authHeaders },
+        body: bytes,
+      });
+      const payload = await response.json().catch(() => ({})) as { cdnUrl?: string; error?: string };
+      if (!response.ok || !payload.cdnUrl) throw new Error(payload.error || `Upload failed (${response.status})`);
+      patchItem(itemId, { inputImage: payload.cdnUrl, r2Url: payload.cdnUrl, status: "ready", error: undefined });
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Reference image upload failed";
+      patchItem(itemId, { inputImage: undefined, status: "error", error: message });
+      URL.revokeObjectURL(blobUrl);
+      addToast(message, "error");
+    }
+  }, [addToast, data, id, patchItem, persist]);
 
-      // ── Upload raw bytes to R2 (hash stored server-side) ──────────────────
-      try {
-        const uploadHeaders: Record<string, string> = {
-          "Content-Type": file.type || "image/jpeg",
-          ...authHeaders,
-        };
-        const res = await fetch("/api/upload-asset", { method: "POST", headers: uploadHeaders, body: bytes });
-        const payload = await res.json().catch(() => ({})) as { cdnUrl?: string; error?: string };
-        if (!res.ok || !payload.cdnUrl) {
-          throw new Error(payload.error || `Upload failed (${res.status})`);
-        }
-        updateNodeData(id, { r2Url: payload.cdnUrl, inputImage: payload.cdnUrl, uploadError: undefined });
-        setUploadingNow(false);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Reference image upload failed";
-        setUploadingNow(false);
-        updateNodeData(id, { hasError: true, uploadError: message });
-        addToast(message, "error");
-      }
-    },
-    [id, updateNodeData, addToast]
-  );
+  const addFiles = useCallback((files: File[]) => {
+    const available = MAX_REFERENCES - references.length;
+    const accepted = files.filter((file) => file.type.startsWith("image/")).slice(0, available);
+    if (files.length > available) addToast(`Only ${available} more reference image${available === 1 ? "" : "s"} can be added.`, "error");
+    accepted.forEach((file) => void uploadFile(file));
+  }, [addToast, references.length, uploadFile]);
 
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file?.type.startsWith("image/")) loadFile(file);
-    },
-    [loadFile]
-  );
+  const move = useCallback((index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= references.length) return;
+    const next = [...references];
+    [next[index], next[target]] = [next[target], next[index]];
+    persist(next);
+  }, [persist, references]);
 
-  // ── Two-layer crossfade: old image stays visible until new one fades in ─────
-  const canonicalSrc = (data.r2Url ?? data.inputImage) as string | undefined;
+  const remove = useCallback((itemId: string) => {
+    const item = references.find((candidate) => candidate.id === itemId);
+    if (item?.inputImage?.startsWith("blob:")) URL.revokeObjectURL(item.inputImage);
+    persist(references.filter((candidate) => candidate.id !== itemId));
+  }, [persist, references]);
 
-  // Local uploading state: true from mount (if no r2Url yet) until CDN URL arrives.
-  // Using local state avoids any timing gap between store update and derived value.
-  const isUploading = uploadingNow || (!data.r2Url && !!data.inputImage && !data.uploadError);
-
-  // The "settled" bottom layer — never changes mid-transition
-  const [baseSrc, setBaseSrc] = useState(canonicalSrc);
-  // The incoming top layer — fades from 0→1, then gets promoted to base
-  const [topSrc, setTopSrc]   = useState<string | undefined>(undefined);
-  const [topReady, setTopReady] = useState(false);   // triggers the CSS transition
-  const baseSrcRef = useRef(baseSrc);
-
+  const lightboxItem = lightboxIndex === null ? undefined : references[lightboxIndex];
+  const lightboxOpen = !!lightboxItem;
+  const closeLightbox = useCallback(() => {
+    setLightboxIndex(null);
+    requestAnimationFrame(() => lightboxTriggerRef.current?.focus());
+  }, []);
   useEffect(() => {
-    if (!canonicalSrc) {
-      // Asset removed — reset crossfade state so the empty state renders
-      setBaseSrc(undefined);
-      baseSrcRef.current = undefined;
-      setTopSrc(undefined);
-      setTopReady(false);
-      return;
-    }
-    if (canonicalSrc === baseSrcRef.current) return;
+    if (!lightboxOpen) return;
+    closeButtonRef.current?.focus();
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeLightbox(); return; }
+      if (event.key !== "Tab") return;
+      const controls = lightboxRef.current?.querySelectorAll<HTMLElement>('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
+      if (!controls?.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", trapFocus);
+    return () => window.removeEventListener("keydown", trapFocus);
+  }, [closeLightbox, lightboxOpen]);
 
-    if (!baseSrcRef.current) {
-      // No existing image — set directly, nothing to crossfade over
-      setBaseSrc(canonicalSrc);
-      baseSrcRef.current = canonicalSrc;
-      return;
-    }
-
-    // New URL arrived — render it on top at opacity 0; onLoad will trigger the fade
-    setTopSrc(canonicalSrc);
-    setTopReady(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canonicalSrc]);
-
-  // Uploading = local blob present but CDN URL not yet confirmed
-  const hasImage = !!baseSrc;
-  // CSS aspect-ratio accepts "width / height" string directly (e.g. "1920 / 1080")
-  const ratio    = (data.imageNaturalRatio as string | undefined) ?? "1 / 1";
-
-  const [natW, natH] = (() => {
-    const r = data.imageNaturalRatio as string | undefined;
-    if (!r) return [0, 0];
-    const parts = r.split("/").map((s) => parseInt(s.trim(), 10));
-    return parts.length === 2 ? parts : [0, 0];
-  })();
-
-  if (hasImage) {
-    return (
-      // Outer: node-card for border/hover/selected styling + overflow:visible for corner handles.
-      // aspect-ratio drives height so ReactFlow ResizeObserver auto-sizes the node.
-      <div
-        ref={rootRef}
-        className={`node-card group${(data.hasError as boolean) ? " node-error-blink" : ""}`}
-        style={{
-          width: "100%",
-          minWidth: 120,
-          aspectRatio: ratio,
-          background: "transparent",
-        }}
-        onAnimationEnd={(e) => { if (e.animationName === "node-error-blink") updateNodeData(id, { hasError: false }); }}
-      >
-        <CornerResizer minWidth={60} minHeight={60} keepAspectRatio />
-        <span className="node-above-label">{data.label as string}</span>
-
-        {/* Inner: clips image to border-radius */}
-        <div
-          className="relative w-full h-full"
-          style={{ borderRadius: 7, overflow: "hidden" }}
-          onDoubleClick={openLightbox}
-        >
-          {/* Dynamic workflow assets can come from local storage, tunnels, custom domains, or signed providers. */}
-          {baseSrc && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              ref={nodeImgRef}
-              src={baseSrc}
-              alt="Input"
-              style={{
-                position: "absolute", inset: 0, width: "100%", height: "100%",
-                display: "block", objectFit: "fill", zIndex: 1,
-                animation: isUploading ? "upload-pulse 1.6s ease-in-out infinite" : undefined,
-              }}
-            />
-          )}
-
-          {/* Layer 2 — incoming URL fades in on top, then gets promoted to base */}
-          {topSrc && (
-            <div
-              aria-hidden
-              onTransitionEnd={() => {
-                const oldBase = baseSrcRef.current;
-                setBaseSrc(topSrc);
-                baseSrcRef.current = topSrc!;
-                setTopSrc(undefined);
-                setTopReady(false);
-                if (oldBase?.startsWith("blob:")) URL.revokeObjectURL(oldBase);
-              }}
-              style={{
-                position: "absolute", inset: 0, zIndex: 2,
-                opacity: topReady ? 1 : 0,
-                transition: "opacity 450ms ease",
-                pointerEvents: "none",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={topSrc}
-                alt=""
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", objectFit: "fill" }}
-                onLoad={() => requestAnimationFrame(() => requestAnimationFrame(() => setTopReady(true)))}
-              />
-            </div>
-          )}
-
-
-          <div
-            className="nodrag nowheel absolute inset-x-2 bottom-9 z-30 flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <input
-              aria-label="Reference name"
-              value={(data.referenceName as string | undefined) ?? ""}
-              maxLength={80}
-              onChange={(event) => updateNodeData(id, { referenceName: event.target.value })}
-              placeholder="Reference name"
-              className="node-input h-7 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]"
-            />
-            <input
-              aria-label="Reference usage note"
-              value={(data.referenceUsage as string | undefined) ?? ""}
-              maxLength={500}
-              onChange={(event) => updateNodeData(id, { referenceUsage: event.target.value })}
-              placeholder="How should the model use it?"
-              className="node-input h-7 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]"
-            />
-          </div>
-
-          {/* Resolution badge */}
-          {natW > 0 && natH > 0 && (
-            <div
-              aria-hidden
-              className="absolute top-1.5 right-2 pointer-events-none select-none z-30 tabular-nums px-1.5 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 node-slide-reveal"
-              style={{ fontSize: 9, lineHeight: 1, color: "#fff", background: "#1a1a1a" }}
-            >
-              {natW} × {natH}
-            </div>
-          )}
-
-          {/* Hover overlay */}
-          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-          </div>
-          <div className="absolute bottom-2 left-0 right-0 flex justify-center px-2.5 opacity-0 group-hover:opacity-100 transition-opacity node-slide-reveal">
-            <button
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => { if (DEMO_MODE) { useWorkflowStore.getState().setAuthModalOpen(true); return; } fileRef.current?.click(); }}
-              className="h-6 px-3 rounded-full bg-black/50 backdrop-blur-sm border border-white/10 text-[10px] text-[#CCCCCC] hover:text-white hover:bg-black/70 transition-colors relative z-10"
-            >
-              replace
-            </button>
-          </div>
-        </div>
-
-        {/* Handle rendered last so it sits above the image div in stacking order */}
-              <Handle
-                type="source"
-                position={Position.Right}
-                style={{ top: "50%" }}
-                className={`node-handle-icon node-handle-icon-out-image${sourceConnected ? " node-handle-connected" : ""}`}
-                title="Image output"
-              >
-                <ImageOutIcon />
-              </Handle>
-
-              {/* Decorative input handles — purely visual, no effect on the node */}
-              <Handle
-                type="target"
-                position={Position.Left}
-                id="decorativeText"
-                style={{ top: "calc(50% - 16px)" }}
-                className={`node-handle-icon node-handle-icon-prompt${edges.some((e) => e.target === id && e.targetHandle === "decorativeText") ? " node-handle-connected" : ""}`}
-                title="Text input"
-              >
-                <PromptIcon />
-              </Handle>
-              <Handle
-                type="target"
-                position={Position.Left}
-                id="decorativeImage"
-                style={{ top: "calc(50% + 16px)" }}
-                className={`node-handle-icon node-handle-icon-resource${edges.some((e) => e.target === id && e.targetHandle === "decorativeImage") ? " node-handle-connected" : ""}`}
-                title="Image input"
-              >
-                <ImageOutIcon />
-              </Handle>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) loadFile(f);
-          }}
-        />
-
-        {/* Lightbox — full-quality view on double-click */}
-        {lightboxOpen && typeof document !== "undefined" && createPortal(
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center transition-opacity duration-200 ease-in-out"
-            style={{ backgroundColor: `rgba(0,0,0,${lightboxVisible ? 0.9 : 0})`, opacity: lightboxVisible ? 1 : 0 }}
-            onClick={closeLightbox}
-          >
-            <div
-              className="relative transition-all duration-200 ease-in-out rounded-2xl overflow-hidden"
-              style={{
-                transform: lightboxVisible ? "scale(1)" : "scale(0.95)",
-                boxShadow: "0 0 0 8px #3a3a3a",
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Layer 1: full-res image */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={canonicalSrc}
-                alt="Full quality"
-                className="block max-w-[90vw] max-h-[90vh] object-contain"
-                onLoad={() => setLightboxImgLoaded(true)}
-              />
-
-              {/* Layer 2: blur overlay — uses the already-cached node image, fades out once full-res loads */}
-              {blurSrc && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={blurSrc}
-                  alt=""
-                  aria-hidden="true"
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{
-                    objectFit:  "cover",
-                    filter:     "blur(24px)",
-                    transform:  "scale(1.1)",
-                    opacity:    lightboxImgLoaded ? 0 : 1,
-                    transition: "opacity 300ms ease",
-                  }}
-                />
-              )}
-            </div>
-          </div>,
-          document.body
-        )}
-      </div>
-    );
-  }
-
-  // Empty state — upload card
   return (
-    <div
-      ref={rootRef}
-      className={`node-card w-full${(data.hasError as boolean) ? " node-error-blink" : ""}`}
-      style={{ minWidth: 200 }}
-      onAnimationEnd={(e) => { if (e.animationName === "node-error-blink") updateNodeData(id, { hasError: false }); }}
-    >
-      <CornerResizer minWidth={160} minHeight={100} />
+    <div ref={rootRef} className={`node-card multi-reference-node w-full h-full flex flex-col${data.hasError ? " node-error-blink" : ""}`} style={{ minWidth: 360, minHeight: 240 }}>
+      <CornerResizer minWidth={340} minHeight={220} />
       <span className="node-above-label">{data.label as string}</span>
+
+      {(legacyTextConnected || legacyImageConnected) && (
+        <>
+          <Handle type="target" position={Position.Left} id="decorativeText" style={{ top: "42%", opacity: legacyTextConnected ? 1 : 0 }} className="node-handle-icon node-handle-icon-prompt" />
+          <Handle type="target" position={Position.Left} id="decorativeImage" style={{ top: "58%", opacity: legacyImageConnected ? 1 : 0 }} className="node-handle-icon node-handle-icon-resource" />
+        </>
+      )}
 
       <Handle
         type="source"
         position={Position.Right}
         style={{ top: "50%" }}
         className={`node-handle-icon node-handle-icon-out-image${sourceConnected ? " node-handle-connected" : ""}`}
-        title="Image output"
+        title={`Ordered reference output (${references.length} image${references.length === 1 ? "" : "s"})`}
       >
         <ImageOutIcon />
       </Handle>
 
-      {/* Decorative input handles — purely visual, no effect on the node */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="decorativeText"
-        style={{ top: "calc(50% - 16px)" }}
-        className={`node-handle-icon node-handle-icon-prompt${edges.some((e) => e.target === id && e.targetHandle === "decorativeText") ? " node-handle-connected" : ""}`}
-        title="Text input"
-      >
-        <PromptIcon />
-      </Handle>
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="decorativeImage"
-        style={{ top: "calc(50% + 16px)" }}
-        className={`node-handle-icon node-handle-icon-resource${edges.some((e) => e.target === id && e.targetHandle === "decorativeImage") ? " node-handle-connected" : ""}`}
-        title="Image input"
-      >
-        <ImageOutIcon />
-      </Handle>
-
-      <div className="overflow-hidden rounded-[7px] p-2.5">
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Choose reference image"
-          onDrop={onDrop}
-          onDragOver={(e) => e.preventDefault()}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            if (DEMO_MODE) useWorkflowStore.getState().setAuthModalOpen(true);
-            else fileRef.current?.click();
-          }}
-          onClick={() => { if (DEMO_MODE) { useWorkflowStore.getState().setAuthModalOpen(true); return; } fileRef.current?.click(); }}
-          className="border border-dashed border-[#1E2840] hover:border-[#243050] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] rounded-md cursor-pointer transition-colors py-8 text-center"
-        >
-          <p className="text-[11px] text-[#A0A0A0]">
-            Drop image or{" "}
-            <span className="underline underline-offset-2 text-white">browse</span>
-          </p>
+      <div className="multi-reference-header">
+        <div>
+          <strong>Ordered references</strong>
+          <span>{references.length}/{MAX_REFERENCES} · sent top to bottom</span>
         </div>
-        <input
-          aria-label="Reference name"
-          type="text"
-          className="node-input mt-2"
-          placeholder="Reference name"
-          value={(data.referenceName as string | undefined) ?? ""}
-          maxLength={80}
-          onChange={(event) => updateNodeData(id, { referenceName: event.target.value })}
-          onClick={(event) => event.stopPropagation()}
-        />
-        <input
-          aria-label="Reference usage note"
-          type="text"
-          className="node-input mt-2"
-          placeholder="How should the model use it?"
-          value={(data.referenceUsage as string | undefined) ?? ""}
-          maxLength={500}
-          onChange={(event) => updateNodeData(id, { referenceUsage: event.target.value })}
-          onClick={(event) => event.stopPropagation()}
-        />
-        <input
-          aria-label="Image URL"
-          type="text"
-          className="node-input mt-2"
-          placeholder="or paste image URL…"
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v) setImage(v);
-          }}
-        />
+        {!readOnly && (
+          <button type="button" className="multi-reference-add" onClick={() => fileRef.current?.click()} disabled={references.length >= MAX_REFERENCES}>
+            <ImagePlus size={14} /> Add images
+          </button>
+        )}
+      </div>
+
+      <div
+        className="multi-reference-list nowheel nodrag"
+        role="list"
+        aria-label="Ordered reference images"
+        onMouseDown={(event) => event.stopPropagation()}
+        onDrop={(event) => { event.preventDefault(); if (!readOnly) addFiles(Array.from(event.dataTransfer.files)); }}
+        onDragOver={(event) => event.preventDefault()}
+      >
+        {references.length === 0 ? (
+          <button type="button" className="multi-reference-empty" aria-label="Add reference images" onClick={() => !readOnly && fileRef.current?.click()} disabled={readOnly}>
+            <Upload size={20} />
+            <strong>Add reference images</strong>
+            <span>Select or drop up to 16 images. Their row order becomes Reference 1…N.</span>
+          </button>
+        ) : references.map((item, index) => {
+          const src = item.r2Url ?? item.inputImage;
+          return (
+            <div key={item.id} className={`multi-reference-row${item.status === "error" ? " multi-reference-row-error" : ""}`} role="listitem">
+              <div className="multi-reference-order" aria-label={`Reference ${index + 1}`}>{index + 1}</div>
+              <button type="button" className="multi-reference-thumb" onClick={(event) => { lightboxTriggerRef.current = event.currentTarget; setLightboxIndex(index); }} aria-label={`Preview Reference ${index + 1}: ${item.name}`}>
+                {src ? (
+                  // Dynamic workflow assets may be local, signed, or remote.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt="" />
+                ) : <ImagePlus size={18} />}
+                {item.status === "uploading" && <span className="multi-reference-progress" role="status">Uploading</span>}
+              </button>
+              <div className="multi-reference-fields">
+                <label>
+                  <span>Reference {index + 1} name / tag</span>
+                  <input value={item.name} maxLength={80} readOnly={readOnly} onChange={(event) => patchItem(item.id, { name: event.target.value })} placeholder={`Reference ${index + 1}`} />
+                </label>
+                <label>
+                  <span>How to use Reference {index + 1}</span>
+                  <textarea value={item.usageNote} maxLength={500} readOnly={readOnly} onChange={(event) => patchItem(item.id, { usageNote: event.target.value })} placeholder="Subject, style, composition, background…" rows={2} />
+                </label>
+                {item.error && <p role="alert">{item.error}</p>}
+              </div>
+              {!readOnly && (
+                <div className="multi-reference-actions" aria-label={`Reference ${index + 1} actions`}>
+                  <button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move Reference ${index + 1} up`}><ChevronUp size={14} /></button>
+                  <button type="button" onClick={() => move(index, 1)} disabled={index === references.length - 1} aria-label={`Move Reference ${index + 1} down`}><ChevronDown size={14} /></button>
+                  <button type="button" onClick={() => remove(item.id)} aria-label={`Remove Reference ${index + 1}`}><Trash2 size={14} /></button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) loadFile(f);
+        onChange={(event) => {
+          addFiles(Array.from(event.target.files ?? []));
+          event.target.value = "";
         }}
       />
+
+      {lightboxItem && typeof document !== "undefined" && createPortal(
+        <div ref={lightboxRef} className="multi-reference-lightbox" role="dialog" aria-modal="true" aria-labelledby={dialogTitleId} onClick={(event) => { if (event.target === event.currentTarget) closeLightbox(); }}>
+          <h2 id={dialogTitleId} className="sr-only">Reference {lightboxIndex! + 1}: {lightboxItem.name}</h2>
+          <button ref={closeButtonRef} type="button" onClick={closeLightbox} aria-label="Close reference preview">×</button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightboxItem.r2Url ?? lightboxItem.inputImage} alt={`${lightboxItem.name || `Reference ${lightboxIndex! + 1}`} preview`} />
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -575,19 +300,9 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
 function ImageOutIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <rect width="18" height="18" x="3" y="3" rx="2" />
       <circle cx="9" cy="9" r="2" fill="white" stroke="none" />
-      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+      <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
     </svg>
   );
 }
-
-function PromptIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 14 14" fill="white">
-      <path d="M1.5 2h11v2H8.5v8H5.5V4H1.5V2z" />
-    </svg>
-  );
-}
-
-

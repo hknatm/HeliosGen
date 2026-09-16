@@ -9,7 +9,7 @@ import NodeActionBar from "./NodeActionBar";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { resolveInputs } from "@/lib/executor";
-import { validateAgentGenerationPackage } from "@/lib/referenceBundle";
+import { directReferences, validateAgentGenerationPackage } from "@/lib/referenceBundle";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { browserNotify, requestNotificationPermission } from "@/lib/browserNotify";
 import { assetSrc } from "@/lib/galleryUtils";
@@ -625,8 +625,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
       const emptyImageEdges = edges.filter((e) => e.target === id && e.targetHandle === "image" && e.sourceHandle !== "refsOut").filter((e) => {
         const src = useWorkflowStore.getState().nodes.find((n) => n.id === e.source);
         if (!src) return true;
-        const url = (src.data.capturedFrameUrl ?? src.data.r2Url ?? src.data.inputImage ?? src.data.imageUrl) as string | undefined;
-        return !url;
+        return directReferences(src, e.sourceHandle).length === 0;
       });
       if (emptyImageEdges.length > 0) {
         setErrorHandles(new Set(["image"]));
@@ -651,6 +650,13 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
       return;
     }
     const upstream = resolveInputs(id, freshNodes, edges);
+    if (upstream.referenceError) {
+      setErrorHandles(new Set(["image"]));
+      setTimeout(() => setErrorHandles(new Set()), 1400);
+      updateNodeData(id, { hasError: true, errorMsg: upstream.referenceError });
+      addToast(upstream.referenceError, "error");
+      return;
+    }
     const { resolvedPrompt, orderedUrls } = resolveMentions(
       upstream.prompt ?? "",
       upstream.imageNodeLabels,

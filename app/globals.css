@@ -214,6 +214,49 @@ body,
   .empty-canvas-action { box-shadow: none; }
 }
 
+/* ── Multi-reference image node ─────────────────────── */
+.multi-reference-node.node-card { background: var(--ui-node-surface); overflow: visible; }
+.multi-reference-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--ui-divider); }
+.multi-reference-header strong, .multi-reference-header span { display: block; }
+.multi-reference-header strong { color: var(--foreground); font-size: 12px; font-weight: 650; }
+.multi-reference-header span { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.multi-reference-add { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 9px; border: 1px solid var(--ui-control-border); border-radius: 8px; background: var(--ui-control-surface); color: var(--foreground); font-size: 10px; font-weight: 600; cursor: pointer; }
+.multi-reference-add:disabled { opacity: .45; cursor: not-allowed; }
+.multi-reference-add:focus-visible, .multi-reference-actions button:focus-visible, .multi-reference-thumb:focus-visible, .multi-reference-empty:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.multi-reference-list { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; overscroll-behavior: contain; }
+.multi-reference-empty { width: 100%; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; border: 1px dashed var(--border); border-radius: 10px; background: var(--ui-field-surface-soft); color: var(--muted); cursor: pointer; }
+.multi-reference-empty strong { color: var(--foreground); font-size: 12px; }
+.multi-reference-empty span { max-width: 34ch; font-size: 10px; line-height: 1.45; }
+.multi-reference-row { display: grid; grid-template-columns: 24px 82px minmax(0, 1fr) 28px; gap: 9px; align-items: start; padding: 9px; border: 1px solid var(--ui-card-border); border-radius: 10px; background: var(--ui-card-surface); }
+.multi-reference-row + .multi-reference-row { margin-top: 8px; }
+.multi-reference-row-error { border-color: color-mix(in srgb, var(--destructive) 55%, transparent); }
+.multi-reference-order { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; background: color-mix(in srgb, #fb923c 16%, transparent); color: #fb923c; font-size: 10px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.multi-reference-thumb { position: relative; width: 82px; height: 82px; overflow: hidden; display: grid; place-items: center; border: 1px solid var(--ui-control-border); border-radius: 8px; background: var(--ui-node-input-surface); color: var(--muted); cursor: zoom-in; }
+.multi-reference-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.multi-reference-progress { position: absolute; inset: auto 4px 4px; padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,.72); color: white; font-size: 8px; }
+.multi-reference-fields { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.multi-reference-fields label > span { display: block; margin-bottom: 3px; color: var(--muted-strong); font-size: 9px; font-weight: 600; }
+.multi-reference-fields input, .multi-reference-fields textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--ui-node-input-border); border-radius: 6px; background: var(--ui-node-input-surface); color: var(--foreground); padding: 6px 7px; font: inherit; font-size: 10px; line-height: 1.35; resize: vertical; outline: none; }
+.multi-reference-fields input:focus-visible, .multi-reference-fields textarea:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent); }
+.multi-reference-fields input::placeholder, .multi-reference-fields textarea::placeholder { color: var(--muted-strong); opacity: 1; }
+.multi-reference-fields p { margin: 0; color: #f87171; font-size: 10px; font-weight: 600; line-height: 1.35; }
+.multi-reference-actions { display: flex; flex-direction: column; gap: 4px; }
+.multi-reference-actions button { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--ui-control-border); border-radius: 7px; background: var(--ui-control-surface); color: var(--muted-strong); cursor: pointer; }
+.multi-reference-actions button:disabled { opacity: .25; cursor: not-allowed; }
+.multi-reference-actions button:last-child:not(:disabled):hover { color: var(--destructive); }
+.multi-reference-lightbox { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 32px; background: rgba(0,0,0,.9); }
+.multi-reference-lightbox img { max-width: 90vw; max-height: 88vh; border-radius: 10px; object-fit: contain; }
+.multi-reference-lightbox > button { position: fixed; top: 18px; right: 22px; width: 40px; height: 40px; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; background: rgba(0,0,0,.6); color: white; font-size: 24px; cursor: pointer; }
+.multi-reference-lightbox > button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+html[data-theme="light"] .multi-reference-order { background: #7c2d12; color: #fff7ed; }
+@media (max-width: 640px) {
+  .multi-reference-row { grid-template-columns: 24px 64px minmax(0, 1fr) 28px; }
+  .multi-reference-thumb { width: 64px; height: 64px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .multi-reference-node *, .multi-reference-lightbox { animation: none !important; transition: none !important; }
+}
+
 /* ── Node design system ──────────────────────────────── */
 .node-card {
   background: #141820;

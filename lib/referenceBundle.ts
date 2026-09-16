@@ -1,5 +1,5 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { NodeData, TextContent } from "./store";
+import type { NodeData, ReferenceImageInput, TextContent } from "./store";
 import { buildComposerPrompt, resolveComposerConnections } from "./composerSources";
 import { COMPOSER_OUTPUT_CONTRACT, resolveAgentSystemPrompt } from "./systemPrompt";
 
@@ -36,6 +36,24 @@ export function referenceName(source: Node<NodeData>): string {
   return authored || String(source.data.label ?? "Reference image");
 }
 
+export function directReferences(source: Node<NodeData>, sourceHandle?: string | null): ReferenceImage[] {
+  if (source.type === "imageInputNode" && Array.isArray(source.data.referenceImages)) {
+    return (source.data.referenceImages as ReferenceImageInput[]).flatMap((item, index) => {
+      const url = item.r2Url ?? item.inputImage;
+      if (!url || url.startsWith("blob:") || url.startsWith("data:") || item.status === "error") return [];
+      return [{
+        id: `${source.id}:${item.id}`,
+        sourceNodeId: source.id,
+        name: item.name.trim() || `Reference ${index + 1}`,
+        usageNote: item.usageNote.trim(),
+        url,
+      }];
+    });
+  }
+  const single = directReference(source, sourceHandle);
+  return single ? [single] : [];
+}
+
 export function directReference(source: Node<NodeData>, sourceHandle?: string | null): ReferenceImage | null {
   const url = imageUrl(source, sourceHandle);
   if (!url) return null;
@@ -57,6 +75,7 @@ export function resolveReferenceImages(
   const incoming = edges.filter((edge) => edge.target === nodeId && edge.targetHandle === targetHandle);
   const direct: ReferenceImage[] = [];
   let packaged: AgentReferencePackage | undefined;
+  let unavailableDirectReference = false;
 
   for (const edge of incoming) {
     const source = nodes.find((node) => node.id === edge.source);
@@ -83,12 +102,21 @@ export function resolveReferenceImages(
     if (source.type === "assistantNode") {
       return { references: [], error: "Connect the AI Agent REFERENCES output, not its PROMPT output, to image references." };
     }
-    const ref = directReference(source, edge.sourceHandle);
-    if (ref) direct.push(ref);
+    const sourceReferences = directReferences(source, edge.sourceHandle);
+    if (source.type === "imageInputNode" && Array.isArray(source.data.referenceImages) && sourceReferences.length !== source.data.referenceImages.length) {
+      unavailableDirectReference = true;
+    }
+    direct.push(...sourceReferences);
   }
 
   if (packaged) return { references: packaged.references.slice(0, MAX_AGENT_REFERENCES), packageSignature: packaged.signature };
-  return { references: direct.slice(0, MAX_AGENT_REFERENCES) };
+  if (unavailableDirectReference) {
+    return { references: [], error: "Wait for every reference image to finish uploading, or remove failed images." };
+  }
+  if (direct.length > MAX_AGENT_REFERENCES) {
+    return { references: [], error: `A maximum of ${MAX_AGENT_REFERENCES} reference images is supported.` };
+  }
+  return { references: direct };
 }
 
 function textContentPrompt(content: TextContent | undefined): string {
