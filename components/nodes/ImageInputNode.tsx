@@ -252,11 +252,11 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
               <div className="multi-reference-fields">
                 <label>
                   <span>Reference {index + 1} name / tag</span>
-                  <input value={item.name} maxLength={80} readOnly={readOnly} onChange={(event) => patchItem(item.id, { name: event.target.value })} placeholder={`Reference ${index + 1}`} />
+                  <input defaultValue={item.name} maxLength={80} readOnly={readOnly} onChange={(event) => patchItem(item.id, { name: event.target.value })} placeholder={`Reference ${index + 1}`} />
                 </label>
                 <label>
                   <span>How to use Reference {index + 1}</span>
-                  <textarea value={item.usageNote} maxLength={500} readOnly={readOnly} onChange={(event) => patchItem(item.id, { usageNote: event.target.value })} placeholder="Subject, style, composition, background…" rows={2} />
+                  <textarea defaultValue={item.usageNote} maxLength={500} readOnly={readOnly} onChange={(event) => patchItem(item.id, { usageNote: event.target.value })} placeholder="Subject, style, composition, background…" rows={2} />
                 </label>
                 {item.error && <p role="alert">{item.error}</p>}
               </div>
