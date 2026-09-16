@@ -97,6 +97,12 @@ export interface NodeData extends Record<string, unknown> {
   inputImage?: string;      // base64 data URL — only kept while session is active
   r2Url?: string;           // R2 CDN URL — durable, used instead of inputImage after upload
   imageNaturalRatio?: string;
+  /** Human-readable identity and usage guidance when this image is used as a reference. */
+  referenceName?: string;
+  referenceUsage?: string;
+  /** Atomic AI Agent output: composed prompt plus the unchanged ordered reference bundle. */
+  referencePackage?: import("./referenceBundle").AgentReferencePackage;
+  agentInputSignature?: string;
   // generation settings
   quality?: string;
   azureQuality?: string;

@@ -21,6 +21,7 @@ import { useWorkflowStore, NodeData } from "@/lib/store";
 import { VIDEO_MODELS } from "@/lib/modelConfig";
 import CuttableEdge from "@/components/edges/CuttableEdge";
 import { topoSort, resolveInputs } from "@/lib/executor";
+import { numberedReferencePrompt, resolveAgentSignature, resolveReferenceImages, validateAgentGenerationPackage } from "@/lib/referenceBundle";
 import { buildComposerContext, buildComposerTargetMedia, resolveComposerConnections, resolveComposerTemplate, buildComposerPrompt } from "@/lib/composerSources";
 import { defaultStyleProfileJson } from "@/lib/profileNodes";
 import { NODE_SIZE, FALLBACK_SIZE, getLastNodeSettings, getDefaultNodeSize } from "@/lib/nodeTypes";
@@ -988,7 +989,8 @@ export default function WorkflowCanvas() {
     setLog((l) => [...l.slice(-60), { text, ok }]);
   }, []);
 
-  // prompt handle: only promptNode; 1 connection max. image handle: up to 14 (nano-banana-2 limit).
+  // Prompt inputs accept one source. Image/reference inputs accept up to 16,
+  // matching GPT Image 2.5; individual model caps are still applied at request time.
   const isValidConnection = useCallback(
     (connection: Connection | Edge) => {
       // Prevent self-loops
@@ -1025,10 +1027,15 @@ export default function WorkflowCanvas() {
         if (connection.targetHandle !== "variables" && edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
       }
 
-      // AI Agent accepts optional structured context (Variables / Style / Brand).
+      // AI Agent accepts optional structured context and multiple image references.
       if (target?.type === "assistantNode") {
         if (connection.targetHandle === "variables") {
           return source?.type === "variableNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode";
+        }
+        if (connection.targetHandle === "references") {
+          if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode") return false;
+          const count = edges.filter((edge) => edge.target === connection.target && edge.targetHandle === "references").length;
+          return count < 16 && !edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === "references");
         }
         if (connection.targetHandle === "prompt") {
           if (source?.type !== "promptNode" && source?.type !== "assistantNode" && source?.type !== "variableNode" && source?.type !== "textContentNode" && source?.type !== "promptComposerNode") return false;
@@ -1055,7 +1062,8 @@ export default function WorkflowCanvas() {
         if (source?.type !== "videoInputNode" && source?.type !== "videoGeneratorNode") return false;
       }
 
-      // Image/resource handles do not accept text (prompt) nodes
+      // Image/resource handles do not accept text (prompt) nodes. The only AI
+      // Agent image edge is its explicit ordered reference-bundle output.
       if (
         (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "textContentNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode" || source?.type === "promptComposerNode") &&
         (connection.targetHandle === "image" ||
@@ -1064,6 +1072,8 @@ export default function WorkflowCanvas() {
           connection.targetHandle === "endFrame" ||
           connection.targetHandle === "videoRef")
       ) return false;
+
+      if (connection.targetHandle === "image" && source?.type === "assistantNode" && connection.sourceHandle !== "refsOut") return false;
 
       if (target?.type === "generateNode") {
         if (connection.targetHandle === "prompt") {
@@ -1076,7 +1086,10 @@ export default function WorkflowCanvas() {
           const count = edges.filter(
             (e) => e.target === connection.target && e.targetHandle === "image"
           ).length;
-          if (count >= 14) return false;
+          if (count >= 16) return false;
+          const hasBundle = edges.some((edge) => edge.target === connection.target && edge.targetHandle === "image" && nodes.find((candidate) => candidate.id === edge.source)?.type === "assistantNode");
+          const addingBundle = source?.type === "assistantNode" && connection.sourceHandle === "refsOut";
+          if ((hasBundle && !addingBundle) || (addingBundle && count > 0)) return false;
 
           // Same image source cannot be connected twice to the same node
           const duplicate = edges.some(
@@ -1441,9 +1454,23 @@ export default function WorkflowCanvas() {
           } catch { /* proceed without */ }
         }
 
-        const upstream = resolveInputs(nodeId, useWorkflowStore.getState().nodes as Node<NodeData>[], edges);
+        const freshGenerationNodes = useWorkflowStore.getState().nodes as Node<NodeData>[];
+        const packageValidation = validateAgentGenerationPackage(nodeId, freshGenerationNodes, edges);
+        if (packageValidation.error) {
+          updateNodeData(nodeId, { status: "error", errorMsg: packageValidation.error });
+          push(`[${node.id}] skipped — ${packageValidation.error}`, false);
+          continue;
+        }
+        const upstream = resolveInputs(nodeId, freshGenerationNodes, edges);
         const prompt = upstream.prompt;
         const imageUrls = upstream.imageUrls;
+        const connectedImageCount = edges.filter((edge) => edge.target === nodeId && edge.targetHandle === "image").length;
+        if (connectedImageCount > 0 && imageUrls.length === 0) {
+          const error = "Connected reference images are not ready. Wait for uploads or run the AI Agent again.";
+          updateNodeData(nodeId, { status: "error", errorMsg: error });
+          push(`[${node.id}] skipped — ${error}`, false);
+          continue;
+        }
         const aspectRatio = node.data.aspectRatio ?? "1:1";
         const quality = node.data.quality ?? "1k";
         const payload = { prompt, imageUrls, model: node.data.model, aspectRatio, quality };
@@ -1572,9 +1599,24 @@ export default function WorkflowCanvas() {
         const localPrompt = (node.data.localPrompt as string | undefined) ?? "";
         const connectedValues = resolveComposerConnections(nodeId, fresh, edges);
         const authoredPrompt = [upstream.prompt?.trim(), localPrompt.trim()].filter(Boolean).join("\n\n");
-        const prompt = connectedValues.length
-          ? buildComposerPrompt(connectedValues, undefined, authoredPrompt)
-          : authoredPrompt;
+        const referenceResolution = resolveReferenceImages(nodeId, fresh, edges, "references");
+        if (referenceResolution.error) {
+          updateNodeData(nodeId, { status: "error", errorMsg: referenceResolution.error });
+          push(`[${node.id}] skipped — ${referenceResolution.error}`, false);
+          continue;
+        }
+        const references = referenceResolution.references;
+        const agentModel = (node.data.model as string | undefined) ?? "claude-sonnet-4-6";
+        if (references.length > 0 && agentModel !== "gpt-5-2") {
+          const error = "Connected reference images require GPT 5.2 · Vision.";
+          updateNodeData(nodeId, { status: "error", errorMsg: error });
+          push(`[${node.id}] skipped — ${error}`, false);
+          continue;
+        }
+        const prompt = [
+          connectedValues.length ? buildComposerPrompt(connectedValues, undefined, authoredPrompt) : authoredPrompt,
+          numberedReferencePrompt(references),
+        ].filter(Boolean).join("\n\n");
 
         if (!prompt.trim()) {
           push(`[${node.id}] skipped — prompt is empty`, false);
@@ -1588,10 +1630,10 @@ export default function WorkflowCanvas() {
         }
 
         push(`[${node.id}] generating text…`);
-        updateNodeData(nodeId, { status: "running", outputText: "", errorMsg: undefined });
+        updateNodeData(nodeId, { status: "running", outputText: "", errorMsg: undefined, referencePackage: undefined, agentInputSignature: undefined });
 
         try {
-          const model = (node.data.model as string | undefined) ?? "claude-sonnet-4-6";
+          const model = agentModel;
           const customProvider = model.startsWith("custom:") ? loadCustomProviderConfig() : undefined;
           const res = await fetch("/api/assistant", {
             method: "POST",
@@ -1599,6 +1641,7 @@ export default function WorkflowCanvas() {
             body: JSON.stringify({
               prompt,
               model,
+              references,
               systemPrompt: resolveAgentSystemPrompt(
                 typeof node.data.systemPromptId === "string" ? node.data.systemPromptId : undefined,
                 connectedValues.length ? COMPOSER_OUTPUT_CONTRACT : undefined,
@@ -1615,6 +1658,7 @@ export default function WorkflowCanvas() {
           const decoder = new TextDecoder();
           let buffer = "";
           let accumulated = "";
+          let terminalReceived = false;
           outer: while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -1624,24 +1668,38 @@ export default function WorkflowCanvas() {
             for (const line of lines) {
               if (!line.startsWith("data: ")) continue;
               const payload = line.slice(6).trim();
-              if (payload === "[DONE]") break outer;
-              try {
-                const parsed = JSON.parse(payload);
-                const delta =
-                  (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
-                    ? parsed.delta.text
-                    : null) ??
-                  parsed.choices?.[0]?.delta?.content ??
-                  "";
-                if (delta) { accumulated += delta; updateNodeData(nodeId, { outputText: accumulated }); }
-              } catch { /* skip malformed SSE lines */ }
+              if (payload === "[DONE]") { terminalReceived = true; break outer; }
+              let parsed: {
+                type?: string;
+                error?: { message?: string };
+                delta?: { type?: string; text?: string };
+                choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+              };
+              try { parsed = JSON.parse(payload) as typeof parsed; } catch { continue; }
+              if (parsed.type === "error" || parsed.error) throw new Error(parsed.error?.message ?? "The AI provider stream failed.");
+              if (parsed.type === "message_stop" || parsed.choices?.[0]?.finish_reason) terminalReceived = true;
+              const delta =
+                (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
+                  ? parsed.delta.text
+                  : null) ??
+                parsed.choices?.[0]?.delta?.content ??
+                "";
+              if (delta) { accumulated += delta; updateNodeData(nodeId, { outputText: accumulated }); }
             }
           }
-          updateNodeData(nodeId, { status: "done", outputText: accumulated });
+          if (!terminalReceived) throw new Error("The AI Agent response ended before completion. Please try again.");
+          if (!accumulated.trim()) throw new Error("The AI Agent returned no text. Please try again.");
+          const signature = resolveAgentSignature(nodeId, useWorkflowStore.getState().nodes as Node<NodeData>[], edges, references);
+          updateNodeData(nodeId, {
+            status: "done",
+            outputText: accumulated,
+            agentInputSignature: signature,
+            referencePackage: { prompt: accumulated, references, signature },
+          });
           push(`[${node.id}] done`);
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
-          updateNodeData(nodeId, { status: "error", errorMsg: msg });
+          updateNodeData(nodeId, { status: "error", errorMsg: msg, outputText: "", referencePackage: undefined, agentInputSignature: undefined });
           push(`[${node.id}] error: ${msg}`, false);
         }
       }

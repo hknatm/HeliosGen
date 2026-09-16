@@ -37,7 +37,8 @@ function sourceNodeTypesFor(targetHandle: string | null): string[] {
   switch (targetHandle) {
     case "prompt":                         return ["promptNode", "assistantNode", "variableNode", "textContentNode", "promptComposerNode"];
     case "variables":                      return ["variableNode", "brandProfileNode", "styleProfileNode"];
-    case "image":
+    case "references":                     return ["imageInputNode", "generateNode", "textRendererNode"];
+    case "image":                          return ["imageInputNode", "generateNode", "textRendererNode", "assistantNode"];
     case "startFrame":
     case "endFrame":
     case "resource":                       return ["imageInputNode", "generateNode", "textRendererNode"];
@@ -55,6 +56,8 @@ function outputHandleForNewNode(newNodeType: string, targetHandle: string): stri
   if (newNodeType === "textContentNode") return "textOut";
   if (newNodeType === "copyComposerNode") return "textOut";
   if (newNodeType === "textRendererNode") return "imageOut";
+  if (newNodeType === "assistantNode" && targetHandle === "image") return "refsOut";
+  if (newNodeType === "assistantNode" && targetHandle === "prompt") return "textOut";
   if (newNodeType === "videoInputNode") {
     if (targetHandle === "videoRef" || targetHandle === "referenceVideo") return "videoRefOut";
     if (targetHandle === "startFrame") return "startFrameOut";
@@ -78,6 +81,7 @@ function inputHandleTopY(nodeType: string | undefined, handleId: string | null, 
   }
   if (nodeType === "assistantNode") {
     if (handleId === "variables") return nodeH * 0.26;
+    if (handleId === "references") return nodeH * 0.44;
     if (handleId === "prompt") return nodeH * 0.62;
   }
   if (nodeType === "copyComposerNode") {
@@ -135,6 +139,7 @@ function targetHandleFor(
   if (targetNodeType === "assistantNode") {
     if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode") return "variables";
     if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "textContentNode" || sourceNodeType === "promptComposerNode") return "prompt";
+    if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") return "references";
     return null;
   }
   if (targetNodeType === "copyComposerNode") {
@@ -153,8 +158,6 @@ function targetHandleFor(
   // Typed output handles take priority
   if (sourceHandleId) {
     switch (sourceHandleId) {
-      case "textOut":
-        return sourceNodeType === "copyComposerNode" ? null : "prompt";
       case "startFrameOut":
       case "imagePickOut":
         if (targetNodeType === "videoGeneratorNode") return "startFrame";
@@ -170,6 +173,10 @@ function targetHandleFor(
       case "audioRefOut":
         if (targetNodeType === "videoGeneratorNode") return "audioRef";
         return null;
+      case "refsOut":
+        return targetNodeType === "generateNode" ? "image" : null;
+      case "textOut":
+        return sourceNodeType === "copyComposerNode" ? null : "prompt";
     }
   }
   // Single-output nodes — fall back to node-type routing
@@ -315,7 +322,7 @@ export default function NodePickerMenu({ dropState, onClose }: Props) {
     src = flowToScreenPosition({ x: absX, y: absY + hy });
   } else {
     // Line goes from the OUTPUT handle (right side of node) to the drop point
-    const MULTI_OUT_IDS = ["startFrameOut", "endFrameOut", "imagePickOut", "videoRefOut", "audioRefOut"];
+    const MULTI_OUT_IDS = ["startFrameOut", "endFrameOut", "imagePickOut", "videoRefOut", "audioRefOut", "textOut", "refsOut"];
     const multiIdx = dropState.sourceHandleId ? MULTI_OUT_IDS.indexOf(dropState.sourceHandleId) : -1;
     const hy = multiIdx >= 0 ? 20 + multiIdx * 32 : 20;
     src = flowToScreenPosition({ x: absX + nodeW, y: absY + hy });

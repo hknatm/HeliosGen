@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 export const EDGE_COLORS: Record<string, string> = {
   prompt: "#2DD4BF", // teal   — matches node-handle-icon-prompt
   image: "#fb923c", // orange — matches node-handle-icon-resource
+  references: "#fb923c", // ordered image-reference bundle
   startFrame: "#818cf8", // indigo — matches node-handle-icon-image
   endFrame: "#818cf8", // indigo — matches node-handle-icon-image
   resource: "#fb923c", // orange — matches node-handle-icon-resource
@@ -33,6 +34,8 @@ export function getSourceHandleColor(nodeType: string | undefined, sourceHandleI
     case "imagePickOut": return "#818cf8";
     case "videoRefOut": return "#22d3ee";
     case "audioRefOut": return "#a78bfa";
+    case "refsOut": return "#fb923c";
+    case "textOut": return nodeType === "assistantNode" ? "#FBBF24" : "#2DD4BF";
   }
   // Legacy / single-output nodes — derive from node type
   switch (nodeType) {

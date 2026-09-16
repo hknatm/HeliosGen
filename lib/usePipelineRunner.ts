@@ -15,7 +15,7 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
   const [pipeline, setPipeline] = useState<PipelineState | null>(null);
   const waveEverActive = useRef(false);
   const scopeRef = useRef(scopeNodeIds);
-  scopeRef.current = scopeNodeIds;
+  useEffect(() => { scopeRef.current = scopeNodeIds; }, [scopeNodeIds]);
 
   const isRunning = pipeline !== null;
 
@@ -24,7 +24,7 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     : nodes;
 
   const genNodeCount = scopedNodes.filter(
-    n => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "textRendererNode"
+    n => n.type === "assistantNode" || n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "textRendererNode"
   ).length;
 
   const run = useCallback(() => {
@@ -70,8 +70,8 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
         const node = nodes.find((item) => item.id === id);
         updateNodeData(id, node?.type === "textRendererNode" ? { pendingRender: true } : { pendingGenerate: true });
       }
-      setPipeline(p => p ? { ...p, waveStarted: true } : null);
-      return;
+      const timer = setTimeout(() => setPipeline(p => p ? { ...p, waveStarted: true } : null), 0);
+      return () => clearTimeout(timer);
     }
 
     // Only mark the wave as "ever active" once a node actually reaches
@@ -106,15 +106,17 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     // Advance to next wave or finish
     const nextIdx = waveIdx + 1;
     if (nextIdx >= waves.length) {
-      setPipeline(null);
-    } else {
-      waveEverActive.current = false;
-      for (const id of waves[nextIdx]) {
-        const node = nodes.find((item) => item.id === id);
-        updateNodeData(id, node?.type === "textRendererNode" ? { pendingRender: true, pipelineQueued: false } : { pendingGenerate: true, pipelineQueued: false });
-      }
-      setPipeline({ waves, waveIdx: nextIdx, waveStarted: true });
+      const timer = setTimeout(() => setPipeline(null), 0);
+      return () => clearTimeout(timer);
     }
+
+    waveEverActive.current = false;
+    for (const id of waves[nextIdx]) {
+      const node = nodes.find((item) => item.id === id);
+      updateNodeData(id, node?.type === "textRendererNode" ? { pendingRender: true, pipelineQueued: false } : { pendingGenerate: true, pipelineQueued: false });
+    }
+    const timer = setTimeout(() => setPipeline({ waves, waveIdx: nextIdx, waveStarted: true }), 0);
+    return () => clearTimeout(timer);
   }, [nodes, pipeline, updateNodeData]);
 
   return { run, isRunning, genNodeCount };

@@ -12,6 +12,12 @@ import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } fro
 import { COMPOSER_OUTPUT_CONTRACT, loadSystemPromptSettings, resolveAgentSystemPrompt, type SystemPromptPreset } from "@/lib/systemPrompt";
 import { resolveComposerConnections, buildComposerContext, buildComposerPrompt } from "@/lib/composerSources";
 import { resolveInputs } from "@/lib/executor";
+import {
+  MULTIMODAL_AGENT_MODEL,
+  numberedReferencePrompt,
+  resolveAgentSignature,
+  resolveReferenceImages,
+} from "@/lib/referenceBundle";
 
 type AssistantNodeType = Node<NodeData, "assistantNode">;
 
@@ -22,6 +28,7 @@ const NAMESPACE_META: Record<string, { color: string; bg: string; border: string
 };
 
 const MODELS = [
+  { id: MULTIMODAL_AGENT_MODEL, label: "GPT 5.2 · Vision" },
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
@@ -131,10 +138,17 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   useGeneratingBorderAnimation(cardRef, busy);
 
   const hasOutput = !!outputText;
-  // The AI Agent can run from structured context (Variables/Style/Brand) alone;
-  // an ordinary text prompt is optional.
-  const hasPrompt = !!localPrompt.trim() || !!connectedPrompt.trim() || hasContext;
-  const sourceConnected = edges.some((e) => e.source === id);
+  const sourceConnected = edges.some((e) => e.source === id && e.sourceHandle === "textOut");
+  const refsSourceConnected = edges.some((e) => e.source === id && e.sourceHandle === "refsOut");
+  const referenceResolution = useMemo(() => resolveReferenceImages(id, nodes, edges, "references"), [edges, id, nodes]);
+  const references = referenceResolution.references;
+  // The AI Agent can run from structured context or references alone; ordinary text is optional.
+  const hasPrompt = !!localPrompt.trim() || !!connectedPrompt.trim() || hasContext || references.length > 0;
+  const referencesConnected = edges.some((edge) => edge.target === id && edge.targetHandle === "references");
+  const multimodalReady = references.length === 0 || model === MULTIMODAL_AGENT_MODEL;
+  const currentSignature = resolveAgentSignature(id, nodes, edges, references);
+  const savedPackage = data.referencePackage as { signature?: string } | undefined;
+  const packageStale = !!outputText && referencesConnected && savedPackage?.signature !== currentSignature;
 
   // Keep textarea in sync with store
   useEffect(() => {
@@ -158,7 +172,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       id: newId,
       position: { x: src.position.x + 20, y: src.position.y + 20 },
       selected: true,
-      data: { ...src.data, status: "idle" as const, outputText: undefined },
+      data: { ...src.data, status: "idle" as const, outputText: undefined, referencePackage: undefined, agentInputSignature: undefined },
     });
     state.edges
       .filter((e) => (e.source === id || e.target === id) && e.deletable !== false)
@@ -179,7 +193,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
 
     setLoading(true);
     setViewMode("output");
-    updateNodeData(id, { status: "running", outputText: "", errorMsg: undefined });
+    updateNodeData(id, { status: "running", outputText: "", errorMsg: undefined, referencePackage: undefined, agentInputSignature: undefined });
 
     try {
       const { data: { session } } = await createClient().auth.getSession();
@@ -189,8 +203,9 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         method: "POST",
         headers: assistantHeaders,
         body: JSON.stringify({
-          prompt: buildAgentPrompt(localPrompt, connectedPrompt, connectedValues),
+          prompt: [buildAgentPrompt(localPrompt, connectedPrompt, connectedValues), numberedReferencePrompt(references)].filter(Boolean).join("\n\n"),
           model,
+          references,
           systemPrompt: resolveAgentSystemPrompt(systemPromptId, hasContext ? COMPOSER_OUTPUT_CONTRACT : undefined),
           ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
         }),
@@ -206,6 +221,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       const decoder = new TextDecoder();
       let buffer = "";
       let accumulated = "";
+      let terminalReceived = false;
 
       outer: while (true) {
         const { done, value } = await reader.read();
@@ -216,36 +232,60 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6).trim();
-          if (payload === "[DONE]") break outer;
-          try {
-            const parsed = JSON.parse(payload);
-            const delta =
-              (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
-                ? parsed.delta.text
-                : null) ??
-              parsed.choices?.[0]?.delta?.content ??
-              "";
-            if (delta) {
-              accumulated += delta;
-              updateNodeData(id, { outputText: accumulated });
-            }
-          } catch { /* skip malformed SSE lines */ }
+          if (payload === "[DONE]") { terminalReceived = true; break outer; }
+          let parsed: {
+            type?: string;
+            error?: { message?: string };
+            delta?: { type?: string; text?: string };
+            choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+          };
+          try { parsed = JSON.parse(payload) as typeof parsed; } catch { continue; }
+          if (parsed.type === "error" || parsed.error) throw new Error(parsed.error?.message ?? "The AI provider stream failed.");
+          if (parsed.type === "message_stop" || parsed.choices?.[0]?.finish_reason) terminalReceived = true;
+          const delta =
+            (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta"
+              ? parsed.delta.text
+              : null) ??
+            parsed.choices?.[0]?.delta?.content ??
+            "";
+          if (delta) {
+            accumulated += delta;
+            updateNodeData(id, { outputText: accumulated });
+          }
         }
       }
 
-      updateNodeData(id, { status: "done", outputText: accumulated });
+      if (!terminalReceived) throw new Error("The AI Agent response ended before completion. Please try again.");
+      if (!accumulated.trim()) throw new Error("The AI Agent returned no text. Please try again.");
+      const currentState = useWorkflowStore.getState();
+      const signature = resolveAgentSignature(id, currentState.nodes, currentState.edges, references);
+      updateNodeData(id, {
+        status: "done",
+        outputText: accumulated,
+        agentInputSignature: signature,
+        referencePackage: { prompt: accumulated, references, signature },
+      });
     } catch (e: unknown) {
       if ((e as Error)?.name === "AbortError") {
-        updateNodeData(id, { status: "idle" });
+        updateNodeData(id, { status: "idle", outputText: "", referencePackage: undefined, agentInputSignature: undefined });
       } else {
         const msg = e instanceof Error ? e.message : String(e);
-        updateNodeData(id, { status: "error", errorMsg: msg });
+        updateNodeData(id, { status: "error", errorMsg: msg, outputText: "", referencePackage: undefined, agentInputSignature: undefined });
       }
     } finally {
       setLoading(false);
       abortRef.current = null;
     }
-  }, [busy, canGenerate, hasPrompt, localPrompt, connectedPrompt, id, updateNodeData, model, hasContext, connectedValues, systemPromptId, setViewMode]);
+  }, [busy, canGenerate, hasPrompt, localPrompt, connectedPrompt, id, updateNodeData, model, hasContext, connectedValues, systemPromptId, setViewMode, references]);
+
+  const generateRef = useRef(handleGenerate);
+  useEffect(() => { generateRef.current = handleGenerate; }, [handleGenerate]);
+  useEffect(() => {
+    if (!data.pendingGenerate) return;
+    updateNodeData(id, { pendingGenerate: false });
+    generateRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.pendingGenerate]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -366,6 +406,9 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           {/* Output display — nowheel tells React Flow to skip its scroll-to-pan handler */}
           <div
             ref={outputRef}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
             className="nowheel absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-foreground leading-[1.6] overflow-y-auto select-text"
             style={{ whiteSpace: "pre-wrap", overscrollBehavior: "contain", display: viewMode === "output" ? undefined : "none" }}
             onMouseDown={(e) => { if (selected) e.stopPropagation(); }}
@@ -383,6 +426,19 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           {/* Editable textarea — input mode */}
           {viewMode === "input" && (
             <>
+              {references.length > 0 && (
+                <div
+                  aria-label="Ordered references"
+                  onMouseDown={(event) => { if (selected) event.stopPropagation(); }}
+                  className="absolute left-2 right-2 top-10 z-20 flex gap-1 overflow-x-auto"
+                >
+                  {references.map((reference, index) => (
+                    <span key={reference.id} title={reference.usageNote || reference.name} className="shrink-0 rounded border border-orange-400/30 bg-orange-400/10 px-1.5 py-0.5 text-[9px] text-orange-200">
+                      {index + 1} · {reference.name}
+                    </span>
+                  ))}
+                </div>
+              )}
               {hasContext && connectedKeys.length > 0 && (
                 <div
                   onMouseDown={(e) => { if (selected) e.stopPropagation(); }}
@@ -419,10 +475,10 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 ref={textareaRef}
                 aria-label="AI Agent prompt"
                 className="relative w-full h-full px-3 pb-10 bg-transparent text-[13px] text-foreground leading-[1.6] resize-none overflow-y-auto z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
-                style={{ caretColor: "currentColor", overscrollBehavior: "contain", paddingTop: hasContext ? 78 : 40 }}
+                style={{ caretColor: "currentColor", overscrollBehavior: "contain", paddingTop: hasContext || references.length ? 78 : 40 }}
                 defaultValue={localPrompt}
                 readOnly={readOnly}
-                onChange={(e) => updateNodeData(id, { localPrompt: e.target.value })}
+                onChange={(e) => updateNodeData(id, { localPrompt: e.target.value, referencePackage: undefined, agentInputSignature: undefined })}
                 onMouseDown={(e) => { if (selected) e.stopPropagation(); else e.preventDefault(); }}
               />
             </>
@@ -468,7 +524,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                       role="menuitemradio"
                       aria-checked={model === m.id}
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); updateNodeData(id, { model: m.id }); setModelOpen(false); }}
+                      onClick={(e) => { e.stopPropagation(); updateNodeData(id, { model: m.id, referencePackage: undefined, agentInputSignature: undefined }); setModelOpen(false); }}
                       className={`w-full text-left px-3 py-[7px] text-[11px] hover:bg-[#141C28] transition-colors ${model === m.id ? "text-white" : "text-[#A0A0A0]"}`}
                     >
                       {m.label}
@@ -484,7 +540,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 aria-label="System prompt preset"
                 value={systemPromptId ?? ""}
                 disabled={readOnly || busy}
-                onChange={(event) => updateNodeData(id, { systemPromptId: event.target.value || undefined })}
+                onChange={(event) => updateNodeData(id, { systemPromptId: event.target.value || undefined, referencePackage: undefined, agentInputSignature: undefined })}
                 className={`agent-prompt-select${missingSystemPrompt ? " agent-prompt-select-missing" : ""}`}
               >
                 <option value="">Global default</option>
@@ -506,10 +562,12 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
             ) : (
               <GenerateButton
                 onClick={handleGenerate}
-                disabled={!hasPrompt || !canGenerate}
+                disabled={!hasPrompt || !canGenerate || !multimodalReady || !!referenceResolution.error}
                 warningMessages={[
                   ...(!hasPrompt ? ["Enter or connect a prompt or structured context"] : []),
                   ...(!canGenerate ? [model.startsWith("custom:") ? "Configure the custom provider" : "Add a Kie.ai API key in Settings"] : []),
+                  ...(!multimodalReady ? ["Select GPT 5.2 · Vision to analyze connected references"] : []),
+                  ...(referenceResolution.error ? [referenceResolution.error] : []),
                 ]}
               />
             ))}
@@ -517,16 +575,34 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         </div>
       </div>
 
-      {/* ── Assistant output handle ───────────────────────────────────── */}
+      {(referencesConnected || packageStale) && (
+        <div aria-live="polite" className="absolute right-2 top-2 z-30 rounded bg-black/60 px-2 py-1 text-[9px] text-white/75">
+          {packageStale ? "References changed · run again" : `${references.length} reference${references.length === 1 ? "" : "s"}`}
+        </div>
+      )}
+
+      {/* ── Atomic prompt + reference outputs ─────────────────────────── */}
+      <span aria-hidden="true" style={{ position: "absolute", right: 13, top: "calc(42% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>PROMPT</span>
       <Handle
         type="source"
         position={Position.Right}
         id="textOut"
-        style={{ top: "50%" }}
+        style={{ top: "42%" }}
         className={`node-handle-icon node-handle-icon-out-text node-handle-icon-out-assistant${sourceConnected ? " node-handle-connected" : ""}`}
-        title="Assistant output"
+        title="Composed prompt output"
       >
         <BrainIcon />
+      </Handle>
+      <span aria-hidden="true" style={{ position: "absolute", right: 13, top: "calc(60% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>REFS</span>
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="refsOut"
+        style={{ top: "60%" }}
+        className={`node-handle-icon node-handle-icon-out-image${refsSourceConnected ? " node-handle-connected" : ""}`}
+        title="Ordered reference bundle output"
+      >
+        <ReferenceIcon />
       </Handle>
 
       <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(62% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>PROMPT</span>
@@ -536,6 +612,15 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         id="prompt"
         title="Optional: Text, Variable, or another AI Agent output"
         style={{ top: "62%", background: "#2DD4BF", border: "2px solid #171923", width: 10, height: 10 }}
+      />
+
+      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(44% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>REFS</span>
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="references"
+        title="Optional: ordered reference images"
+        style={{ top: "44%", background: "#fb923c", border: "2px solid #171923", width: 10, height: 10 }}
       />
 
       {/* ── Structured context input handle (Variables / Style / Brand) ── */}
@@ -565,6 +650,16 @@ function ChevronIcon({ open }: { open: boolean }) {
       className={`shrink-0 transition-transform duration-100 ${open ? "rotate-180" : ""}`}
     >
       <path d="M1 2.5 4 5.5 7 2.5" />
+    </svg>
+  );
+}
+
+function ReferenceIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
     </svg>
   );
 }

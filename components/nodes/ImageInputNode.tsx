@@ -321,6 +321,28 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
           )}
 
 
+          <div
+            className="nodrag nowheel absolute inset-x-2 bottom-9 z-30 flex flex-col gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <input
+              aria-label="Reference name"
+              value={(data.referenceName as string | undefined) ?? ""}
+              maxLength={80}
+              onChange={(event) => updateNodeData(id, { referenceName: event.target.value })}
+              placeholder="Reference name"
+              className="node-input h-7 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]"
+            />
+            <input
+              aria-label="Reference usage note"
+              value={(data.referenceUsage as string | undefined) ?? ""}
+              maxLength={500}
+              onChange={(event) => updateNodeData(id, { referenceUsage: event.target.value })}
+              placeholder="How should the model use it?"
+              className="node-input h-7 text-[10px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]"
+            />
+          </div>
+
           {/* Resolution badge */}
           {natW > 0 && natH > 0 && (
             <div
@@ -485,10 +507,19 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
 
       <div className="overflow-hidden rounded-[7px] p-2.5">
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Choose reference image"
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            if (DEMO_MODE) useWorkflowStore.getState().setAuthModalOpen(true);
+            else fileRef.current?.click();
+          }}
           onClick={() => { if (DEMO_MODE) { useWorkflowStore.getState().setAuthModalOpen(true); return; } fileRef.current?.click(); }}
-          className="border border-dashed border-[#1E2840] hover:border-[#243050] rounded-md cursor-pointer transition-colors py-8 text-center"
+          className="border border-dashed border-[#1E2840] hover:border-[#243050] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] rounded-md cursor-pointer transition-colors py-8 text-center"
         >
           <p className="text-[11px] text-[#A0A0A0]">
             Drop image or{" "}
@@ -496,6 +527,27 @@ export default function ImageInputNode({ id, data, selected }: NodeProps<ImageIn
           </p>
         </div>
         <input
+          aria-label="Reference name"
+          type="text"
+          className="node-input mt-2"
+          placeholder="Reference name"
+          value={(data.referenceName as string | undefined) ?? ""}
+          maxLength={80}
+          onChange={(event) => updateNodeData(id, { referenceName: event.target.value })}
+          onClick={(event) => event.stopPropagation()}
+        />
+        <input
+          aria-label="Reference usage note"
+          type="text"
+          className="node-input mt-2"
+          placeholder="How should the model use it?"
+          value={(data.referenceUsage as string | undefined) ?? ""}
+          maxLength={500}
+          onChange={(event) => updateNodeData(id, { referenceUsage: event.target.value })}
+          onClick={(event) => event.stopPropagation()}
+        />
+        <input
+          aria-label="Image URL"
           type="text"
           className="node-input mt-2"
           placeholder="or paste image URL…"

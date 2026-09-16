@@ -9,6 +9,7 @@ import NodeActionBar from "./NodeActionBar";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { resolveInputs } from "@/lib/executor";
+import { validateAgentGenerationPackage } from "@/lib/referenceBundle";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { browserNotify, requestNotificationPermission } from "@/lib/browserNotify";
 import { assetSrc } from "@/lib/galleryUtils";
@@ -621,7 +622,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
 
     // Block if any wired image source has no output yet
     {
-      const emptyImageEdges = edges.filter((e) => e.target === id && e.targetHandle === "image").filter((e) => {
+      const emptyImageEdges = edges.filter((e) => e.target === id && e.targetHandle === "image" && e.sourceHandle !== "refsOut").filter((e) => {
         const src = useWorkflowStore.getState().nodes.find((n) => n.id === e.source);
         if (!src) return true;
         const url = (src.data.capturedFrameUrl ?? src.data.r2Url ?? src.data.inputImage ?? src.data.imageUrl) as string | undefined;
@@ -641,8 +642,15 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
       }
     }
 
-    // Use fresh store state so any newly extracted frames are included
-    const upstream = resolveInputs(id, useWorkflowStore.getState().nodes as Node<NodeData>[], edges);
+    // Use fresh store state so any newly extracted frames are included.
+    const freshNodes = useWorkflowStore.getState().nodes as Node<NodeData>[];
+    const packageValidation = validateAgentGenerationPackage(id, freshNodes, edges);
+    if (packageValidation.error) {
+      updateNodeData(id, { hasError: true, errorMsg: packageValidation.error });
+      addToast(packageValidation.error, "error");
+      return;
+    }
+    const upstream = resolveInputs(id, freshNodes, edges);
     const { resolvedPrompt, orderedUrls } = resolveMentions(
       upstream.prompt ?? "",
       upstream.imageNodeLabels,

@@ -1,5 +1,6 @@
 import { Node, Edge } from "@xyflow/react";
 import { NodeData, TextContent } from "./store";
+import { resolveReferenceImages } from "./referenceBundle";
 
 /** Topological sort — returns node ids in execution order */
 export function topoSort(nodes: Node<NodeData>[], edges: Edge[]): string[] {
@@ -37,7 +38,7 @@ export function topoSort(nodes: Node<NodeData>[], edges: Edge[]): string[] {
 export function buildPipelineWaves(nodes: Node<NodeData>[], edges: Edge[]): string[][] {
   const genIds = new Set(
     nodes
-      .filter(n => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "textRendererNode")
+      .filter(n => n.type === "assistantNode" || n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "textRendererNode")
       .map(n => n.id)
   );
   if (genIds.size === 0) return [];
@@ -162,12 +163,13 @@ export function resolveInputs(
       }
     }
 
-    // "image" handle — multi-image input for generateNode (up to 14)
+    // "image" handle — direct images or one ordered AI Agent reference bundle.
     if (edge.targetHandle === "image") {
+      if (src.type === "assistantNode" && edge.sourceHandle === "refsOut") continue;
       const imgSrc = resolveImageUrl(src, edge.sourceHandle);
       if (imgSrc) {
         result.imageUrls.push(imgSrc);
-        result.imageNodeLabels.push((src.data.label as string | undefined) ?? "");
+        result.imageNodeLabels.push((src.data.referenceName as string | undefined) ?? (src.data.label as string | undefined) ?? "");
       }
       // Carry upstream prompt if current node doesn't have one
       if ((src.type === "generateNode" || src.type === "videoGeneratorNode") && src.data.prompt && !result.prompt) {
@@ -212,6 +214,11 @@ export function resolveInputs(
     if (src.type === "videoGeneratorNode") {
       if (src.data.prompt && !result.prompt) result.prompt = src.data.prompt as string;
     }
+  }
+  const bundled = resolveReferenceImages(nodeId, nodes, edges, "image");
+  if (!bundled.error && bundled.packageSignature) {
+    result.imageUrls = bundled.references.map((reference) => reference.url);
+    result.imageNodeLabels = bundled.references.map((reference) => reference.name);
   }
   return result;
 }
