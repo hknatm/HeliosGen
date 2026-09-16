@@ -52,6 +52,8 @@ export interface ReferenceImageInput {
   naturalRatio?: string;
   name: string;
   usageNote: string;
+  /** Optional reusable metadata preset copied into this workflow row. */
+  presetId?: string;
   status?: "uploading" | "ready" | "error";
   error?: string;
 }

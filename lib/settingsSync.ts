@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useChatSessionStore } from "./chatSessionStore";
 import { useWorkflowStore } from "./store";
 import { loadTheme, normalizeTheme, saveTheme } from "./theme";
+import { REFERENCE_PRESETS_CHANGED_EVENT, REFERENCE_PRESETS_STORAGE_KEY } from "./referencePresets";
 
 /**
  * Focused settings sync helper for local mode.
@@ -26,6 +27,7 @@ const LOCAL_STORAGE_KEYS: Record<string, string> = {
   customProviderConfig: "aiui-custom-provider-config",
   customProviderModels: "aiui-custom-provider-models",
   systemPrompts: "aiui-system-prompts",
+  referencePresets: REFERENCE_PRESETS_STORAGE_KEY,
   modelProviders: "aiui-model-providers",
   textFonts: "aiui-text-fonts",
   textRenderingSettings: "aiui-text-rendering-settings",
@@ -53,6 +55,7 @@ function writeLocal(key: string, value: unknown) {
       customProviderConfig: "aiui-custom-provider-config-changed",
       customProviderModels: "aiui-custom-provider-models-changed",
       systemPrompts: "aiui-system-prompts-changed",
+      referencePresets: REFERENCE_PRESETS_CHANGED_EVENT,
       modelProviders: "aiui-providers-changed",
       textFonts: "aiui-text-fonts-changed",
       textRenderingSettings: "aiui-text-rendering-settings-changed",
@@ -113,6 +116,11 @@ const SETTINGS: Record<string, SettingAccessor> = {
     read: () => readLocal("systemPrompts"),
     write: (v) => writeLocal("systemPrompts", v),
     isEmpty: (v) => !v || typeof v !== "object",
+  },
+  referencePresets: {
+    read: () => readLocal("referencePresets"),
+    write: (v) => writeLocal("referencePresets", v),
+    isEmpty: (v) => !v || typeof v !== "object" || !Array.isArray((v as { presets?: unknown }).presets),
   },
   modelProviders: {
     read: () => readLocal("modelProviders"),
@@ -216,6 +224,7 @@ export function useSettingsSync() {
       ["aiui-custom-provider-config-changed", "customProviderConfig"],
       ["aiui-custom-provider-models-changed", "customProviderModels"],
       ["aiui-system-prompts-changed", "systemPrompts"],
+      [REFERENCE_PRESETS_CHANGED_EVENT, "referencePresets"],
       ["aiui-providers-changed", "modelProviders"],
       ["aiui-text-fonts-changed", "textFonts"],
       ["aiui-text-rendering-settings-changed", "textRenderingSettings"],

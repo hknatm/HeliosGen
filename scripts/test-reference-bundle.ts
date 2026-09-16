@@ -60,6 +60,13 @@ assert.equal(persisted.referenceImages?.[0].inputImage, undefined);
 assert.equal(persisted.referenceImages?.[0].status, "error");
 assert.match(persisted.referenceImages?.[0].error ?? "", /interrupted/i);
 assert.equal(persistedNodeData(multi.data).referenceImages?.[0].r2Url, "https://example.com/one.png");
+const interruptedReplacement = persistedNodeData({
+  label: "References",
+  referenceImages: [{ id: "product", inputImage: "blob:replacement", r2Url: "https://example.com/old.png", name: "Product", usageNote: "Preserve", status: "uploading" }],
+});
+assert.equal(interruptedReplacement.referenceImages?.[0].r2Url, "https://example.com/old.png");
+assert.equal(interruptedReplacement.referenceImages?.[0].status, "ready");
+assert.match(interruptedReplacement.referenceImages?.[0].error ?? "", /previous image was kept/i);
 assert.deepEqual(refs.map((ref) => ref.name), ["Product", "Style"]);
 assert.match(numberedReferencePrompt(refs), /Reference 1 — Product/);
 assert.match(numberedReferencePrompt(refs), /Reference 2 — Style/);

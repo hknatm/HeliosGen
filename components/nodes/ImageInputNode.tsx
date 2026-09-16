@@ -2,12 +2,20 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from "@xyflow/react";
-import { ChevronDown, ChevronUp, ImagePlus, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronUp, ImagePlus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
 import CornerResizer from "./CornerResizer";
 import { useWorkflowStore, NodeData, type ReferenceImageInput } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
+import { replacementDraft, replacementFailurePatch } from "@/lib/referenceImageState";
+import {
+  loadReferencePresetSettings,
+  MAX_REFERENCE_PRESETS,
+  REFERENCE_PRESETS_CHANGED_EVENT,
+  saveReferencePresetSettings,
+  type ReferenceMetadataPreset,
+} from "@/lib/referencePresets";
 
 
 type ImageInputNodeType = Node<NodeData, "imageInputNode">;
@@ -45,15 +53,30 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
   const sourceConnected = edges.some((edge) => edge.source === id);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const replaceFileRef = useRef<HTMLInputElement>(null);
+  const replaceItemIdRef = useRef<string | null>(null);
+  const replaceButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const updateNodeInternals = useUpdateNodeInternals();
   const references = useMemo(() => normalizedReferences(data), [data]);
   const legacyTextConnected = edges.some((edge) => edge.target === id && edge.targetHandle === "decorativeText");
   const legacyImageConnected = edges.some((edge) => edge.target === id && edge.targetHandle === "decorativeImage");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [presets, setPresets] = useState<ReferenceMetadataPreset[]>(() => loadReferencePresetSettings().presets);
+  const [presetStatus, setPresetStatus] = useState("");
   const dialogTitleId = useId();
   const lightboxRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lightboxTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const refreshPresets = () => setPresets(loadReferencePresetSettings().presets);
+    window.addEventListener(REFERENCE_PRESETS_CHANGED_EVENT, refreshPresets);
+    window.addEventListener("storage", refreshPresets);
+    return () => {
+      window.removeEventListener(REFERENCE_PRESETS_CHANGED_EVENT, refreshPresets);
+      window.removeEventListener("storage", refreshPresets);
+    };
+  }, []);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -98,13 +121,12 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
 
     const blobUrl = URL.createObjectURL(file);
     const existing = current.find((item) => item.id === itemId);
-    const draft: ReferenceImageInput = {
-      id: itemId,
-      inputImage: blobUrl,
-      name: existing?.name || file.name.replace(/\.[^.]+$/, "").slice(0, 80) || `Reference ${current.length + 1}`,
-      usageNote: existing?.usageNote ?? "",
-      status: "uploading",
-    };
+    const draft = replacementDraft(
+      existing,
+      itemId,
+      blobUrl,
+      file.name.replace(/\.[^.]+$/, "").slice(0, 80) || `Reference ${current.length + 1}`,
+    );
     const next = current.some((item) => item.id === itemId)
       ? current.map((item) => item.id === itemId ? { ...item, ...draft } : item)
       : [...current, draft];
@@ -118,7 +140,7 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
       if (session?.access_token) authHeaders.Authorization = `Bearer ${session.access_token}`;
 
       try {
-        const lookup = await fetch(`/api/lookup-asset?hash=${hash}`, { headers: authHeaders });
+        const lookup = await fetch(`/api/lookup-asset?hash=${hash}`, { headers: authHeaders, signal: AbortSignal.timeout(15_000) });
         const cached = await lookup.json() as { cdnUrl?: string | null };
         if (lookup.ok && cached.cdnUrl) {
           patchItem(itemId, { inputImage: cached.cdnUrl, r2Url: cached.cdnUrl, status: "ready", error: undefined });
@@ -131,6 +153,7 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
         method: "POST",
         headers: { "Content-Type": file.type || "image/jpeg", ...authHeaders },
         body: bytes,
+        signal: AbortSignal.timeout(60_000),
       });
       const payload = await response.json().catch(() => ({})) as { cdnUrl?: string; error?: string };
       if (!response.ok || !payload.cdnUrl) throw new Error(payload.error || `Upload failed (${response.status})`);
@@ -138,7 +161,7 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
       URL.revokeObjectURL(blobUrl);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Reference image upload failed";
-      patchItem(itemId, { inputImage: undefined, status: "error", error: message });
+      patchItem(itemId, replacementFailurePatch(existing, message));
       URL.revokeObjectURL(blobUrl);
       addToast(message, "error");
     }
@@ -150,6 +173,40 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
     if (files.length > available) addToast(`Only ${available} more reference image${available === 1 ? "" : "s"} can be added.`, "error");
     accepted.forEach((file) => void uploadFile(file));
   }, [addToast, references.length, uploadFile]);
+
+  const replaceImage = useCallback((itemId: string) => {
+    const item = normalizedReferences(useWorkflowStore.getState().nodes.find((node) => node.id === id)?.data ?? data).find((candidate) => candidate.id === itemId);
+    if (item?.status === "uploading") return;
+    replaceItemIdRef.current = itemId;
+    replaceFileRef.current?.click();
+  }, [data, id]);
+
+  const applyPreset = useCallback((itemId: string, presetId: string) => {
+    if (!presetId) { patchItem(itemId, { presetId: undefined }); return; }
+    const preset = presets.find((item) => item.id === presetId);
+    if (!preset) return;
+    patchItem(itemId, { name: preset.name, usageNote: preset.usageNote, presetId: preset.id });
+  }, [patchItem, presets]);
+
+  const savePreset = useCallback((item: ReferenceImageInput) => {
+    const name = item.name.trim();
+    if (!name) { const message = "Add a reference name before saving a preset."; setPresetStatus(message); addToast(message, "error"); return; }
+    const current = loadReferencePresetSettings();
+    if (current.presets.length >= MAX_REFERENCE_PRESETS) { const message = `You can save up to ${MAX_REFERENCE_PRESETS} reference presets.`; setPresetStatus(message); addToast(message, "error"); return; }
+    const preset: ReferenceMetadataPreset = { id: uid(), label: name, name, usageNote: item.usageNote.trim() };
+    try {
+      const saved = saveReferencePresetSettings({ version: 1, presets: [...current.presets, preset] });
+      setPresets(saved.presets);
+      patchItem(item.id, { presetId: preset.id });
+      const message = `Saved “${name}” as a reference preset.`;
+      setPresetStatus(message);
+      addToast(message, "success");
+    } catch {
+      const message = "The reference preset could not be saved in this browser.";
+      setPresetStatus(message);
+      addToast(message, "error");
+    }
+  }, [addToast, patchItem]);
 
   const move = useCallback((index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -241,6 +298,7 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
           return (
             <div key={item.id} className={`multi-reference-row${item.status === "error" ? " multi-reference-row-error" : ""}`} role="listitem">
               <div className="multi-reference-order" aria-label={`Reference ${index + 1}`}>{index + 1}</div>
+              <div className="multi-reference-image-column">
               <button type="button" className="multi-reference-thumb" onClick={(event) => { lightboxTriggerRef.current = event.currentTarget; setLightboxIndex(index); }} aria-label={`Preview Reference ${index + 1}: ${item.name}`}>
                 {src ? (
                   // Dynamic workflow assets may be local, signed, or remote.
@@ -249,14 +307,26 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
                 ) : <ImagePlus size={18} />}
                 {item.status === "uploading" && <span className="multi-reference-progress" role="status">Uploading</span>}
               </button>
+              {!readOnly && <button ref={(element) => { if (element) replaceButtonRefs.current.set(item.id, element); else replaceButtonRefs.current.delete(item.id); }} type="button" className="multi-reference-replace" onClick={() => replaceImage(item.id)} aria-disabled={item.status === "uploading"} onKeyDown={(event) => { if (item.status === "uploading") event.preventDefault(); }} aria-label={`Replace image for Reference ${index + 1}`}><RefreshCw size={11} /> Replace</button>}
+              </div>
               <div className="multi-reference-fields">
+                <div className="multi-reference-preset-row">
+                  <label>
+                    <span>Metadata preset</span>
+                    <select value={item.presetId && presets.some((preset) => preset.id === item.presetId) ? item.presetId : ""} disabled={readOnly || presets.length === 0} onChange={(event) => applyPreset(item.id, event.target.value)} aria-label={`Apply metadata preset to Reference ${index + 1}`}>
+                      <option value="">{presets.length ? "Custom metadata" : "No saved presets"}</option>
+                      {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+                    </select>
+                  </label>
+                  {!readOnly && <button type="button" onClick={() => savePreset(item)} aria-label={`Save preset for Reference ${index + 1}`} title="Save the current name and description as a reusable preset"><Save size={12} /> Save preset</button>}
+                </div>
                 <label>
                   <span>Reference {index + 1} name / tag</span>
-                  <input defaultValue={item.name} maxLength={80} readOnly={readOnly} onChange={(event) => patchItem(item.id, { name: event.target.value })} placeholder={`Reference ${index + 1}`} />
+                  <input key={`name-${item.presetId ?? "custom"}`} defaultValue={item.name} maxLength={80} readOnly={readOnly} onChange={(event) => patchItem(item.id, { name: event.target.value })} placeholder={`Reference ${index + 1}`} />
                 </label>
                 <label>
                   <span>How to use Reference {index + 1}</span>
-                  <textarea defaultValue={item.usageNote} maxLength={500} readOnly={readOnly} onChange={(event) => patchItem(item.id, { usageNote: event.target.value })} placeholder="Subject, style, composition, background…" rows={2} />
+                  <textarea key={`usage-${item.presetId ?? "custom"}`} defaultValue={item.usageNote} maxLength={500} readOnly={readOnly} onChange={(event) => patchItem(item.id, { usageNote: event.target.value })} placeholder="Subject, style, composition, background…" rows={2} />
                 </label>
                 {item.error && <p role="alert">{item.error}</p>}
               </div>
@@ -271,6 +341,23 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
           );
         })}
       </div>
+
+      <p className="sr-only" role="status" aria-live="polite">{presetStatus}</p>
+
+      <input
+        ref={replaceFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const itemId = replaceItemIdRef.current;
+          const file = event.target.files?.[0];
+          if (itemId && file) void uploadFile(file, itemId);
+          replaceItemIdRef.current = null;
+          event.target.value = "";
+          requestAnimationFrame(() => { if (itemId) replaceButtonRefs.current.get(itemId)?.focus(); });
+        }}
+      />
 
       <input
         ref={fileRef}

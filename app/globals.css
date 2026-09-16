@@ -222,7 +222,7 @@ body,
 .multi-reference-header span { margin-top: 2px; color: var(--muted); font-size: 10px; }
 .multi-reference-add { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 9px; border: 1px solid var(--ui-control-border); border-radius: 8px; background: var(--ui-control-surface); color: var(--foreground); font-size: 10px; font-weight: 600; cursor: pointer; }
 .multi-reference-add:disabled { opacity: .45; cursor: not-allowed; }
-.multi-reference-add:focus-visible, .multi-reference-actions button:focus-visible, .multi-reference-thumb:focus-visible, .multi-reference-empty:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.multi-reference-add:focus-visible, .multi-reference-actions button:focus-visible, .multi-reference-thumb:focus-visible, .multi-reference-empty:focus-visible, .multi-reference-replace:focus-visible, .multi-reference-preset-row button:focus-visible, .multi-reference-preset-row select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .multi-reference-list { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; overscroll-behavior: contain; }
 .multi-reference-empty { width: 100%; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; border: 1px dashed var(--border); border-radius: 10px; background: var(--ui-field-surface-soft); color: var(--muted); cursor: pointer; }
 .multi-reference-empty strong { color: var(--foreground); font-size: 12px; }
@@ -232,9 +232,15 @@ body,
 .multi-reference-row-error { border-color: color-mix(in srgb, var(--destructive) 55%, transparent); }
 .multi-reference-order { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; background: color-mix(in srgb, #fb923c 16%, transparent); color: #fb923c; font-size: 10px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .multi-reference-thumb { position: relative; width: 82px; height: 82px; overflow: hidden; display: grid; place-items: center; border: 1px solid var(--ui-control-border); border-radius: 8px; background: var(--ui-node-input-surface); color: var(--muted); cursor: zoom-in; }
+.multi-reference-image-column { width: 82px; display: flex; flex-direction: column; gap: 5px; }
 .multi-reference-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.multi-reference-replace { min-height: 25px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--ui-control-border); border-radius: 6px; background: var(--ui-control-surface); color: var(--muted-strong); font-size: 9px; font-weight: 650; cursor: pointer; }
+.multi-reference-replace[aria-disabled="true"] { opacity: .45; cursor: wait; }
 .multi-reference-progress { position: absolute; inset: auto 4px 4px; padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,.72); color: white; font-size: 8px; }
 .multi-reference-fields { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.multi-reference-preset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: end; }
+.multi-reference-preset-row select { width: 100%; min-width: 0; min-height: 29px; border: 1px solid var(--ui-node-input-border); border-radius: 6px; background: var(--ui-node-input-surface); color: var(--foreground); padding: 5px 6px; font: inherit; font-size: 9px; outline: none; }
+.multi-reference-preset-row button { min-height: 29px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border: 1px solid var(--ui-control-border); border-radius: 6px; background: var(--ui-control-surface); color: var(--muted-strong); padding: 5px 6px; font-size: 9px; font-weight: 650; cursor: pointer; }
 .multi-reference-fields label > span { display: block; margin-bottom: 3px; color: var(--muted-strong); font-size: 9px; font-weight: 600; }
 .multi-reference-fields input, .multi-reference-fields textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--ui-node-input-border); border-radius: 6px; background: var(--ui-node-input-surface); color: var(--foreground); padding: 6px 7px; font: inherit; font-size: 10px; line-height: 1.35; resize: vertical; outline: none; }
 .multi-reference-fields input:focus-visible, .multi-reference-fields textarea:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent); }
@@ -252,6 +258,7 @@ html[data-theme="light"] .multi-reference-order { background: #7c2d12; color: #f
 @media (max-width: 640px) {
   .multi-reference-row { grid-template-columns: 24px 64px minmax(0, 1fr) 28px; }
   .multi-reference-thumb { width: 64px; height: 64px; }
+  .multi-reference-image-column { width: 64px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .multi-reference-node *, .multi-reference-lightbox { animation: none !important; transition: none !important; }

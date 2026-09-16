@@ -5,11 +5,13 @@ export function persistedNodeData(data: NodeData): NodeData {
   const referenceImages = Array.isArray(data.referenceImages)
     ? data.referenceImages.map((item) => {
         const transient = !!item.inputImage && (item.inputImage.startsWith("blob:") || item.inputImage.startsWith("data:"));
-        const interrupted = transient && !item.r2Url;
+        const interruptedNewUpload = transient && !item.r2Url;
+        const interruptedReplacement = transient && !!item.r2Url;
         return {
           ...item,
           inputImage: item.r2Url || transient ? undefined : item.inputImage,
-          ...(interrupted ? { status: "error" as const, error: "Upload interrupted before completion. Add the image again." } : {}),
+          ...(interruptedNewUpload ? { status: "error" as const, error: "Upload interrupted before completion. Add the image again." } : {}),
+          ...(interruptedReplacement ? { status: "ready" as const, error: "Replacement was interrupted. The previous image was kept." } : {}),
         };
       })
     : undefined;

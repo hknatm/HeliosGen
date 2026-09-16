@@ -168,6 +168,10 @@ export function resolveInputs(
     // "image" handle — direct images or one ordered AI Agent reference bundle.
     if (edge.targetHandle === "image") {
       if (src.type === "assistantNode" && edge.sourceHandle === "refsOut") continue;
+      if (src.type === "imageInputNode" && Array.isArray(src.data.referenceImages)) {
+        const refs = directReferences(src, edge.sourceHandle);
+        if (refs.length !== src.data.referenceImages.length) result.referenceError = "Wait for every reference image to finish uploading, or remove failed images.";
+      }
       const refs = directReferences(src, edge.sourceHandle);
       if (refs.length > 0) {
         result.imageUrls.push(...refs.map((reference) => reference.url));
