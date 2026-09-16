@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { normalizeAssetSrc } from "@/lib/assetSrc";
 
 export interface GalleryItem {
   id: string;
@@ -25,15 +26,10 @@ const THUMB_WIDTHS = [16, 32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 12
  * path but use the current origin; provider and third-party URLs stay unchanged.
  */
 export function assetSrc(url: string): string {
-  if (!url || url.startsWith("blob:") || url.startsWith("data:") || url.startsWith("/generated/")) return url;
-  try {
-    const parsed = new URL(url);
-    return parsed.pathname.startsWith("/generated/")
-      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
-      : url;
-  } catch {
-    return url;
-  }
+  return normalizeAssetSrc(
+    url,
+    process.env.NEXT_PUBLIC_HELIOS_MODE === "local" || process.env.NEXT_PUBLIC_GUEST_MODE === "true",
+  );
 }
 
 /**

@@ -12,6 +12,7 @@
   },
   "include": [
     "../lib/guest/db.ts",
+    "../lib/assetSrc.ts",
     "../lib/systemPrompt.ts",
     "../lib/executor.ts",
     "../lib/modelConfig.ts",
@@ -28,6 +29,7 @@
     "../lib/copyComposer.ts",
     "../lib/store.ts",
     "test-local-db.ts",
+    "test-gallery-utils.ts",
     "test-system-prompt.ts",
     "test-connectivity.ts",
     "test-model-config.ts",

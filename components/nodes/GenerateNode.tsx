@@ -514,11 +514,21 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
         if (cancelled) return;
 
         if (json.status === "done") {
+          const imageUrl = typeof json.imageUrl === "string" && json.imageUrl.trim() ? json.imageUrl : null;
           const storeNode = useWorkflowStore.getState().nodes.find(n => n.id === id);
           const gens = [...((storeNode?.data?.generations as GenEntry[] | undefined) ?? [])] as GenEntry[];
           const slot = storeNode?.data?.currentGenIdx as number ?? gens.length - 1;
-          gens[slot] = json.imageUrl as string;
-          updateNodeData(id, { status: "done", imageUrl: json.imageUrl, taskId: undefined, generations: gens, currentGenIdx: slot });
+          if (!imageUrl) {
+            const error = "Generation completed without a usable image URL";
+            gens[slot] = { error };
+            updateNodeData(id, { status: "error", errorMsg: error, imageUrl: undefined, taskId: undefined, generations: gens, currentGenIdx: slot });
+            clearInterval(interval);
+            document.removeEventListener("visibilitychange", onVisible);
+            browserNotify("Node failed", error);
+            return;
+          }
+          gens[slot] = imageUrl;
+          updateNodeData(id, { status: "done", imageUrl, taskId: undefined, generations: gens, currentGenIdx: slot });
           clearInterval(interval);
           document.removeEventListener("visibilitychange", onVisible);
           browserNotify("Node complete", (data.label as string | undefined) ?? "Image generated");
@@ -1018,6 +1028,21 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
                           const h = cardRef.current.offsetHeight;
                           if (w > 0 && h > 0) updateNodeSize(id, w, h);
                         });
+                      } : undefined}
+                      onError={i === currentGenIdx ? () => {
+                        const error = "Generated image could not be loaded";
+                        const storeNode = useWorkflowStore.getState().nodes.find(n => n.id === id);
+                        const gens = [...((storeNode?.data?.generations as GenEntry[] | undefined) ?? generations)] as GenEntry[];
+                        if (typeof gens[i] !== "string") return;
+                        gens[i] = { error };
+                        updateNodeData(id, {
+                          status: "error",
+                          errorMsg: error,
+                          imageUrl: undefined,
+                          generations: gens,
+                          currentGenIdx: i,
+                        });
+                        browserNotify("Node failed", error);
                       } : undefined}
                     />
                   )}
