@@ -5,8 +5,13 @@
  * Content-Disposition: attachment so the browser saves it to disk.
  * Only allowed origins are proxied.
  */
+import { createReadStream } from "fs";
+import { stat } from "fs/promises";
+import { basename } from "path";
+import { Readable } from "stream";
 import { NextRequest, NextResponse } from "next/server";
 import { GUEST_MODE } from "@/lib/guestMode";
+import { generatedAssetContentType, generatedAssetPathFromUrl } from "@/lib/localGeneratedAsset";
 
 const ALLOWED_ORIGINS = [
   process.env.R2_PUBLIC_URL ?? "",
@@ -32,7 +37,7 @@ function isAllowed(url: string, requestOrigin: string): boolean {
   return ALLOWED_ORIGINS.some((origin) => url === origin || url.startsWith(`${origin}/`));
 }
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
@@ -42,15 +47,33 @@ export async function GET(req: NextRequest) {
   if (!isAllowed(url, req.nextUrl.origin)) return new NextResponse("Forbidden", { status: 403 });
 
   const localPath = localGeneratedPath(url, req.nextUrl.origin);
-  const fetchUrl = localPath ? new URL(localPath, req.nextUrl.origin).toString() : url;
-  const providerToken = req.cookies.get("helios_owner_session")?.value;
-  const headers = localPath && providerToken
-    ? { Cookie: `helios_owner_session=${encodeURIComponent(providerToken)}` }
-    : undefined;
+  const safeFilename = filename.replace(/[\r\n"\\/]/g, "_").slice(0, 180) || "download";
+  if (localPath) {
+    const filePath = generatedAssetPathFromUrl(localPath);
+    if (!filePath) return new NextResponse("Not found", { status: 404 });
+    try {
+      const info = await stat(filePath);
+      if (!info.isFile()) return new NextResponse("Not found", { status: 404 });
+      const body = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
+      return new NextResponse(body, {
+        headers: {
+          "Content-Type": generatedAssetContentType(basename(filePath)),
+          "Content-Length": String(info.size),
+          "Content-Disposition": `attachment; filename="${safeFilename}"`,
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+      if (code !== "ENOENT") console.error("[download] local file read failed:", error);
+      return new NextResponse("Not found", { status: 404 });
+    }
+  }
 
   let upstream: Response;
   try {
-    upstream = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(180_000) });
+    upstream = await fetch(url, { signal: AbortSignal.timeout(180_000) });
   } catch {
     return new NextResponse("Fetch failed", { status: 502 });
   }
@@ -60,7 +83,6 @@ export async function GET(req: NextRequest) {
   }
 
   const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
-  const safeFilename = filename.replace(/[\r\n"\\/]/g, "_").slice(0, 180) || "download";
 
   return new NextResponse(upstream.body, {
     status: 200,

@@ -11,13 +11,13 @@ export function resolveGeneratedAssetPath(folder: string, filename: string): str
 }
 
 export function generatedAssetPathFromUrl(value: string): string | null {
-  let pathname = value;
-  if (!pathname.startsWith("/")) {
-    try {
-      pathname = new URL(pathname).pathname;
-    } catch {
-      return null;
-    }
+  let pathname: string;
+  try {
+    // Normalize relative and absolute app-owned URLs alike so cache-busting or
+    // provider-access query parameters never become part of the filename.
+    pathname = new URL(value, "http://local.invalid").pathname;
+  } catch {
+    return null;
   }
 
   let decoded: string;

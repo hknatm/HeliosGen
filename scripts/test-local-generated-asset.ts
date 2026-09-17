@@ -4,6 +4,7 @@ import { generatedAssetContentType, generatedAssetPathFromUrl, resolveGeneratedA
 const expected = resolveGeneratedAssetPath("images", "example.png");
 assert.ok(expected?.replace(/\\/g, "/").endsWith("/public/generated/images/example.png"));
 assert.equal(generatedAssetPathFromUrl("/generated/images/example.png"), expected);
+assert.equal(generatedAssetPathFromUrl("/generated/images/example.png?token=x&cache=1"), expected);
 assert.equal(generatedAssetPathFromUrl("https://example.test/generated/images/example.png?token=x"), expected);
 assert.equal(resolveGeneratedAssetPath("..", "secret.png"), null);
 assert.equal(resolveGeneratedAssetPath("images", "../secret.png"), null);
