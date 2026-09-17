@@ -328,13 +328,17 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
     const filename = `image-${Date.now()}.png`;
     setIsSaving(true);
     try {
-      const resp = await fetch(`/api/download?url=${encodeURIComponent(url)}&filename=${filename}`);
+      const downloadUrl = assetSrc(url);
+      const resp = await fetch(`/api/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`);
+      if (!resp.ok) throw new Error((await resp.text().catch(() => "")) || `Download failed (${resp.status})`);
       const blob = await resp.blob();
       const obj = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = obj; a.download = filename;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(obj);
+    } catch (error) {
+      useWorkflowStore.getState().addToast(error instanceof Error ? error.message : "Image download failed", "error");
     } finally {
       setIsSaving(false);
     }

@@ -16,9 +16,20 @@ const ALLOWED_ORIGINS = [
   "https://pbxt.replicate.delivery",
 ].filter(Boolean).map((o) => o.replace(/\/$/, ""));
 
-function isAllowed(url: string): boolean {
-  if (GUEST_MODE && url.startsWith("/generated/")) return true; // local disk, served same-origin
-  return ALLOWED_ORIGINS.some((origin) => url.startsWith(origin));
+function localGeneratedPath(url: string, requestOrigin: string): string | null {
+  if (!GUEST_MODE) return null;
+  try {
+    const resolved = new URL(url, requestOrigin);
+    if (resolved.origin !== requestOrigin || !resolved.pathname.startsWith("/generated/")) return null;
+    return `${resolved.pathname}${resolved.search}`;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowed(url: string, requestOrigin: string): boolean {
+  if (localGeneratedPath(url, requestOrigin)) return true;
+  return ALLOWED_ORIGINS.some((origin) => url === origin || url.startsWith(`${origin}/`));
 }
 
 export const runtime = "edge";
@@ -28,20 +39,18 @@ export async function GET(req: NextRequest) {
   const filename = req.nextUrl.searchParams.get("filename") ?? "download";
 
   if (!url) return new NextResponse("Missing url", { status: 400 });
-  if (!isAllowed(url)) return new NextResponse("Forbidden", { status: 403 });
+  if (!isAllowed(url, req.nextUrl.origin)) return new NextResponse("Forbidden", { status: 403 });
 
-  let fetchUrl = url;
-  if (GUEST_MODE && url.startsWith("/generated/")) {
-    const resolved = new URL(url, req.nextUrl.origin);
-    // Re-check after normalization: rejects "/generated/../api/..." traversal
-    // that would otherwise turn this proxy into same-origin SSRF.
-    if (!resolved.pathname.startsWith("/generated/")) return new NextResponse("Forbidden", { status: 403 });
-    fetchUrl = resolved.toString();
-  }
+  const localPath = localGeneratedPath(url, req.nextUrl.origin);
+  const fetchUrl = localPath ? new URL(localPath, req.nextUrl.origin).toString() : url;
+  const providerToken = req.cookies.get("helios_owner_session")?.value;
+  const headers = localPath && providerToken
+    ? { Cookie: `helios_owner_session=${encodeURIComponent(providerToken)}` }
+    : undefined;
 
   let upstream: Response;
   try {
-    upstream = await fetch(fetchUrl);
+    upstream = await fetch(fetchUrl, { headers, signal: AbortSignal.timeout(180_000) });
   } catch {
     return new NextResponse("Fetch failed", { status: 502 });
   }
@@ -51,12 +60,13 @@ export async function GET(req: NextRequest) {
   }
 
   const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
+  const safeFilename = filename.replace(/[\r\n"\\/]/g, "_").slice(0, 180) || "download";
 
   return new NextResponse(upstream.body, {
     status: 200,
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${safeFilename}"`,
       "Cache-Control": "no-store",
     },
   });

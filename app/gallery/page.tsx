@@ -8,7 +8,7 @@ import { PROVIDERS, getModelProvider, setModelProvider, modelHasProviderChoice }
 import { useWorkflowStore } from "@/lib/store";
 import type { User } from "@supabase/supabase-js";
 import { Maximize2, Minimize2, ShieldAlert, X } from "lucide-react";
-import { GalleryItem, getToken, galleryCache, thumbSrc } from "@/lib/galleryUtils";
+import { GalleryItem, assetSrc, getToken, galleryCache, thumbSrc } from "@/lib/galleryUtils";
 import { useFolderStore } from "@/lib/folderStore";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -2385,7 +2385,8 @@ function GalleryInner() {
     const taskId = randomUUID();
     setDownloads(prev => [...prev, { id: taskId, filename, status: "preparing" }]);
     try {
-      const res = await fetch(`/api/download?url=${encodeURIComponent(url)}&filename=${filename}`);
+      const downloadUrl = assetSrc(url);
+      const res = await fetch(`/api/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`);
       if (!res.ok) throw new Error("Failed");
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
