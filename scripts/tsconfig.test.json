@@ -36,6 +36,7 @@
     "../lib/copyComposer.ts",
     "../lib/store.ts",
     "test-local-db.ts",
+    "test-deferred-storage.ts",
     "test-local-generated-asset.ts",
     "test-gallery-utils.ts",
     "test-callback-payload.ts",

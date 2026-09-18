@@ -42,7 +42,8 @@ You will receive a single JSON object containing structured context:
 - optional "target": the exact media type and aspect ratio selected by the connected Image or Video node
 
 Rules:
-- Use every concrete value from the context when it is relevant (colors, lighting, background, visual rules, brand voice).
+- Use every non-empty concrete value from the context unless it directly conflicts with a more specific instruction.
+- Treat identity fields such as subject, title, listing_title, product_name, and item_name as mandatory. Preserve their wording and explicitly name that subject in the final image/video prompt; never replace it with a generic object.
 - Treat composition, subject placement, copy space, and copy-area avoidance as visual direction. Translate them into natural model language; never echo JSON keys, coordinates, object notation, or implementation instructions.
 - If a target is present, adapt framing and composition to its media type and aspect ratio.
 - When a copy space is specified, clearly ask for it to remain clean, low-detail, unobstructed, and free of generated typography. It is reserved for a later deterministic overlay.

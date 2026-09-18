@@ -1934,6 +1934,14 @@ html[data-theme="light"] .gallery-shimmer {
 }
 
 /* ── @mention chip in PromptNode ─────────────────────────────────────────── */
+/* Keep trackpad/touch panning inside the workflow instead of triggering
+   Safari's horizontal back/forward navigation gesture. */
+.workflow-canvas-shell,
+.workflow-canvas-shell .react-flow,
+.workflow-canvas-shell .react-flow__pane {
+  overscroll-behavior: none;
+}
+
 /* ── Canvas hand/pan mode cursor ─────────────────────────────────────────── */
 .canvas-hand-mode,
 .canvas-hand-mode .react-flow__pane {

@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { NodeData, ReferenceImageInput, TextContent } from "./store";
-import { buildComposerPrompt, resolveComposerConnections } from "./composerSources";
+import { buildComposerPrompt, resolveComposerConnections, variableNodePromptText } from "./composerSources";
 import { COMPOSER_OUTPUT_CONTRACT, resolveAgentSystemPrompt } from "./systemPrompt";
 
 export const MAX_AGENT_REFERENCES = 16;
@@ -133,7 +133,7 @@ export function resolveAgentAuthoredPrompt(nodeId: string, nodes: Node<NodeData>
   let connected = "";
   if (source?.type === "promptNode") connected = String(source.data.prompt ?? "").trim();
   else if (source?.type === "assistantNode") connected = String(source.data.outputText ?? "").trim();
-  else if (source?.type === "variableNode") connected = String(source.data.variableValue ?? "").trim();
+  else if (source?.type === "variableNode") connected = variableNodePromptText(source);
   else if (source?.type === "promptComposerNode") connected = String(source.data.resolvedPrompt ?? source.data.prompt ?? "").trim();
   else if (source?.type === "textContentNode") connected = textContentPrompt(source.data.textContent as TextContent | undefined);
   return [connected, local].filter(Boolean).join("\n\n");

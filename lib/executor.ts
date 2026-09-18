@@ -1,6 +1,7 @@
 import { Node, Edge } from "@xyflow/react";
 import { NodeData, TextContent } from "./store";
 import { directReferences, resolveReferenceImages } from "./referenceBundle";
+import { variableNodePromptText } from "./composerSources";
 
 /** Topological sort — returns node ids in execution order */
 export function topoSort(nodes: Node<NodeData>[], edges: Edge[]): string[] {
@@ -152,7 +153,7 @@ export function resolveInputs(
         result.prompt = src.data.prompt as string | undefined;
       }
       if (src.type === "variableNode") {
-        result.prompt = src.data.variableValue as string | undefined;
+        result.prompt = variableNodePromptText(src) || undefined;
       }
       if (src.type === "textContentNode") {
         result.prompt = textContentToPrompt(src.data.textContent);

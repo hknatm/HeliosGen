@@ -54,7 +54,9 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
   const fields = useMemo(() => fieldsFromData(data), [data]);
 
   useEffect(() => {
-    if (!Array.isArray(data.variables)) updateNodeData(id, { variables: fields });
+    if (!Array.isArray(data.variables)) {
+      updateNodeData(id, { variables: fields, variableKey: undefined, variableValue: undefined, variableType: undefined });
+    }
   }, [data.variables, fields, id, updateNodeData]);
 
   useEffect(() => {

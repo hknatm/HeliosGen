@@ -234,7 +234,20 @@ export default function WorkflowCanvas() {
   }, [_saveViewport]);
   const updateNodeDataRef = useRef(updateNodeData);
   updateNodeDataRef.current = updateNodeData;
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
   const [activeTool, setActiveTool] = useState<"select" | "hand">("select");
+
+  useEffect(() => {
+    const reportStorageFailure = () => useWorkflowStore.getState().addToast(
+      "Workflow changes could not be saved in this browser. Free storage space and keep this tab open, then try again.",
+      "error",
+    );
+    window.addEventListener("helios-workflow-storage-error", reportStorageFailure);
+    return () => window.removeEventListener("helios-workflow-storage-error", reportStorageFailure);
+  }, []);
 
   const canUndo = undoStack.length > 0;
   const canRedo = redoStack.length > 0;
@@ -370,8 +383,9 @@ export default function WorkflowCanvas() {
     const removeChanges = changes.filter((c) => c.type === "remove");
     if (removeChanges.length > 0) {
       pushUndoSnapshot();
+      const currentEdges = edgesRef.current;
       const removingIds = new Set(removeChanges.map((c) => c.id));
-      const connectedEdgeIds = edges
+      const connectedEdgeIds = currentEdges
         .filter((e) => removingIds.has(e.source) || removingIds.has(e.target))
         .map((e) => e.id);
 
@@ -383,7 +397,7 @@ export default function WorkflowCanvas() {
 
       setTimeout(() => {
         _onNodesChange(removeChanges);
-        onEdgesChange(connectedEdgeIds.map((id) => ({ type: "remove" as const, id })));
+        useWorkflowStore.getState().onEdgesChange(connectedEdgeIds.map((id) => ({ type: "remove" as const, id })));
         connectedEdgeIds.forEach((id) => suppressedEdgeRemovesRef.current.delete(id));
         setDyingNodeIds((prev) => { const s = new Set(prev); removingIds.forEach((id) => s.delete(id)); return s; });
         setDyingEdgeIds((prev) => { const s = new Set(prev); connectedEdgeIds.forEach((id) => s.delete(id)); return s; });
@@ -397,17 +411,18 @@ export default function WorkflowCanvas() {
     // ── Alignment snap (edge-to-edge + center magnetic effect) ─────────────────
     const newGuides: SnapGuide[] = [];
 
+    const currentNodes = nodesRef.current;
     const snappedChanges = nonRemoveChanges.map((change) => {
       if (change.type !== "position" || !change.position) return change;
 
-      // On drag-stop: lock in the last snapped position
+      // React Flow supplies the final pointer position. Reusing the previous
+      // frame's snap target here made nodes jump backward on release.
       if (!change.dragging) {
-        const t = snapTargetRef.current;
-        if (t && t.id === change.id) return { ...change, position: { x: t.x, y: t.y } };
+        if (snapTargetRef.current?.id === change.id) snapTargetRef.current = null;
         return change;
       }
 
-      const dragged = nodes.find((n) => n.id === change.id);
+      const dragged = currentNodes.find((n) => n.id === change.id);
       if (!dragged) return change;
 
       const dw = dragged.measured?.width ?? (NODE_SIZE[dragged.type ?? ""] ?? FALLBACK_SIZE).w;
@@ -417,7 +432,7 @@ export default function WorkflowCanvas() {
       let snapX: number | null = null, guideX: number | null = null, minDX = SNAP_THRESHOLD;
       let snapY: number | null = null, guideY: number | null = null, minDY = SNAP_THRESHOLD;
 
-      for (const other of nodes) {
+      for (const other of currentNodes) {
         if (other.id === change.id) continue;
         const ow = other.measured?.width ?? (NODE_SIZE[other.type ?? ""] ?? FALLBACK_SIZE).w;
         const oh = other.measured?.height ?? (NODE_SIZE[other.type ?? ""] ?? FALLBACK_SIZE).h;
@@ -457,14 +472,14 @@ export default function WorkflowCanvas() {
       if (change.type !== "dimensions" || !change.dimensions) continue;
       if (!change.resizing) { hasEndedResize = true; continue; }
 
-      const resized = nodes.find((n) => n.id === change.id);
+      const resized = currentNodes.find((n) => n.id === change.id);
       if (!resized) continue;
 
       const { x, y } = resized.position;
       const dw = change.dimensions.width;
       const dh = change.dimensions.height;
 
-      for (const other of nodes) {
+      for (const other of currentNodes) {
         if (other.id === change.id) continue;
         const ow = other.measured?.width ?? (NODE_SIZE[other.type ?? ""] ?? FALLBACK_SIZE).w;
         const oh = other.measured?.height ?? (NODE_SIZE[other.type ?? ""] ?? FALLBACK_SIZE).h;
@@ -488,14 +503,14 @@ export default function WorkflowCanvas() {
     const extraMemberChanges: NodeChange[] = [];
     for (const change of snappedChanges) {
       if (change.type !== "position" || !change.position) continue;
-      const node = nodes.find((n) => n.id === change.id);
+      const node = currentNodes.find((n) => n.id === change.id);
       if (node?.type !== "groupNode") continue;
       const memberIds = node.data?.memberIds as string[] | undefined;
       if (!memberIds?.length) continue;
       const dx = change.position.x - node.position.x;
       const dy = change.position.y - node.position.y;
       for (const memberId of memberIds) {
-        const member = nodes.find((n) => n.id === memberId);
+        const member = currentNodes.find((n) => n.id === memberId);
         if (!member) continue;
         extraMemberChanges.push({
           type: "position" as const,
@@ -508,7 +523,7 @@ export default function WorkflowCanvas() {
 
     setSnapGuides(newGuides);
     _onNodesChange(extraMemberChanges.length > 0 ? [...snappedChanges, ...extraMemberChanges] : snappedChanges);
-  }, [nodes, edges, _onNodesChange, pushUndoSnapshot]);
+  }, [_onNodesChange, pushUndoSnapshot]);
 
   // ── Sidebar drag-and-drop ────────────────────────────────────────────────────
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -1895,13 +1910,15 @@ export default function WorkflowCanvas() {
 
   const handleNodeClick = useCallback((_e: React.MouseEvent, node: Node) => {
     breakGroupSelection(node);
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
 
     // Group nodes and nodes already in a group don't show a preview
     if (node.type === "groupNode") {
       setPotentialGroupIds(null);
       return;
     }
-    const isInGroup = nodes.some(
+    const isInGroup = currentNodes.some(
       (n) => n.type === "groupNode" && (n.data?.memberIds as string[] | undefined)?.includes(node.id)
     );
     if (isInGroup) {
@@ -1914,12 +1931,12 @@ export default function WorkflowCanvas() {
     const queue = [node.id];
     while (queue.length > 0) {
       const cur = queue.shift()!;
-      for (const edge of edges) {
+      for (const edge of currentEdges) {
         const next =
           edge.source === cur ? edge.target :
           edge.target === cur ? edge.source : null;
         if (!next || visited.has(next)) continue;
-        const nextNode = nodes.find((n) => n.id === next);
+        const nextNode = currentNodes.find((n) => n.id === next);
         if (!nextNode || nextNode.type === "groupNode") continue;
         visited.add(next);
         queue.push(next);
@@ -1928,7 +1945,7 @@ export default function WorkflowCanvas() {
 
     // Only show when there are actual connections
     setPotentialGroupIds(visited.size > 1 ? visited : null);
-  }, [breakGroupSelection, nodes, edges]);
+  }, [breakGroupSelection]);
 
   const handleNodeDragStart: OnNodeDrag = useCallback((_e, node) => {
     pushUndoSnapshot();
@@ -1968,16 +1985,12 @@ export default function WorkflowCanvas() {
       const isLockedGroup = n.type === "groupNode" && !!n.data?.locked;
       const isDying = dyingNodeIds.has(n.id);
       const dyingClass = isDying ? "node-dying" : null;
-      return {
-        ...n,
-        draggable: (isLockedMember || isLockedGroup) ? false : undefined,
-        className: [n.className, ancestorClass, groupPreviewClass, dyingClass].filter(Boolean).join(" ") || undefined,
-        style: {
-          ...n.style,
-          opacity: isDying ? undefined : (isDimmed ? 0.25 : undefined),
-          transition: isDying || isRubberBandSelecting ? undefined : ((anySelected || hasPotentialGroup) ? "opacity 150ms" : undefined),
-        },
-      };
+      const draggable = (isLockedMember || isLockedGroup) ? false : undefined;
+      const className = [n.className, ancestorClass, groupPreviewClass, dyingClass].filter(Boolean).join(" ") || undefined;
+      const opacity = isDying ? undefined : (isDimmed ? 0.25 : undefined);
+      const transition = isDying || isRubberBandSelecting ? undefined : ((anySelected || hasPotentialGroup) ? "opacity 150ms" : undefined);
+      if (draggable === undefined && className === n.className && opacity === undefined && transition === undefined) return n;
+      return { ...n, draggable, className, style: { ...n.style, opacity, transition } };
     });
   }, [nodes, ancestorIds, potentialGroupIds, dyingNodeIds, isConnecting, isRubberBandSelecting]);
 
@@ -1989,11 +2002,10 @@ export default function WorkflowCanvas() {
       const isAncestorEdge = ancestorEdgeIds.has(e.id);
       const isGroupEdge = hasPotentialGroup && potentialGroupIds!.has(e.source) && potentialGroupIds!.has(e.target);
       const isDimmed = (anySelected || hasPotentialGroup) && !isAncestorEdge && !isGroupEdge;
-      return {
-        ...e,
-        className: isAncestorEdge ? [e.className, "edge-ancestor"].filter(Boolean).join(" ") : e.className,
-        data: { ...e.data, dying: dyingEdgeIds.has(e.id) || e.data?.dying === true, dimmed: isDimmed },
-      };
+      const className = isAncestorEdge ? [e.className, "edge-ancestor"].filter(Boolean).join(" ") : e.className;
+      const dying = dyingEdgeIds.has(e.id) || e.data?.dying === true;
+      if (className === e.className && dying === (e.data?.dying === true) && isDimmed === (e.data?.dimmed === true)) return e;
+      return { ...e, className, data: { ...e.data, dying, dimmed: isDimmed } };
     });
   }, [edges, ancestorEdgeIds, potentialGroupIds, dyingEdgeIds]);
 
@@ -2003,13 +2015,8 @@ export default function WorkflowCanvas() {
         ref={wrapperRef}
         className={`relative flex-1 flex flex-col min-h-0 min-w-0${activeTool === "hand" ? " canvas-hand-mode" : ""}`}
         style={{ background: "transparent" }}
-        onMouseMoveCapture={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const y = e.clientY - rect.top;
-          e.currentTarget.style.setProperty("--mouse-x", `${x}px`);
-          e.currentTarget.style.setProperty("--mouse-y", `${y}px`);
-          mousePosRef.current = { x: e.clientX, y: e.clientY };
+        onPointerMoveCapture={(event) => {
+          mousePosRef.current = { x: event.clientX, y: event.clientY };
         }}
       >
         <ReactFlow

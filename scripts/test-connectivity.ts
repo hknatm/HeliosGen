@@ -10,6 +10,7 @@ import type { Edge, Node } from "@xyflow/react";
 import type { NodeData, TextContent } from "../lib/store";
 import { resolveInputs } from "../lib/executor";
 import { buildComposerPrompt, resolveComposerConnections } from "../lib/composerSources";
+import { resolveAgentAuthoredPrompt } from "../lib/referenceBundle";
 import { resolveTextRendererContent, resolveTextRendererInputs } from "../lib/textRendererSources";
 import { rawCopySignature } from "../lib/copyComposer";
 
@@ -41,6 +42,26 @@ const promptSource = node("prompt-1", "promptNode", { prompt: "A connected sourc
 const connectedAgent = node("agent-2", "assistantNode", {});
 const agentInputs = resolveInputs("agent-2", [promptSource, connectedAgent], [edge("e-agent", "prompt-1", "agent-2", "prompt")]);
 assert(agentInputs.prompt === "A connected source prompt", "AI Agent accepts a connected prompt source");
+
+const modernPromptVariable = node("variable-prompt", "variableNode", {
+  variables: [
+    { id: "title", key: "listing_title", value: "crystal 3d heart", type: "text" },
+    { id: "finish", key: "finish", value: "clear crystal", type: "text" },
+  ],
+  variableValue: "stale legacy title",
+});
+const modernPromptInputs = resolveInputs("agent-2", [modernPromptVariable, connectedAgent], [edge("e-modern-prompt", "variable-prompt", "agent-2", "prompt", "dataOut")]);
+assert(modernPromptInputs.prompt === "listing_title: crystal 3d heart\nfinish: clear crystal", "modern Variable rows feed prompt handles and override stale legacy values");
+
+const modernGeneratorInputs = resolveInputs("gen-1", [modernPromptVariable, gen], [edge("e-modern-gen", "variable-prompt", "gen-1", "prompt", "dataOut")]);
+assert(modernGeneratorInputs.prompt?.includes("crystal 3d heart") === true, "modern Variable rows reach the final image-generator prompt");
+assert(resolveAgentAuthoredPrompt("agent-2", [modernPromptVariable, connectedAgent], [edge("e-modern-agent", "variable-prompt", "agent-2", "prompt", "dataOut")]) === modernPromptInputs.prompt, "AI Agent authored prompt uses modern Variable rows instead of stale legacy data");
+
+const legacyPromptVariable = node("legacy-prompt", "variableNode", { variableKey: "subject", variableValue: "  legacy crystal heart  ", variableType: "text" });
+assert(resolveInputs("gen-1", [legacyPromptVariable, gen], [edge("e-legacy-gen", "legacy-prompt", "gen-1", "prompt", "dataOut")]).prompt === "legacy crystal heart", "legacy single-field Variable prompt remains supported");
+
+const invalidPromptVariable = node("invalid-prompt", "variableNode", { variables: [{ id: "blank", key: "", value: "must not leak", type: "text" }] });
+assert(resolveInputs("gen-1", [invalidPromptVariable, gen], [edge("e-invalid-gen", "invalid-prompt", "gen-1", "prompt", "dataOut")]).prompt === undefined, "invalid or unnamed Variable rows do not leak into prompts");
 
 const contextVariable = node("variable-context", "variableNode", { variableKey: "material", variableValue: "K9 crystal" });
 const contextOnlyInputs = resolveInputs("agent-2", [contextVariable, connectedAgent], [edge("e-context", "variable-context", "agent-2", "variables", "dataOut")]);

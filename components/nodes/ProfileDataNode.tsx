@@ -155,12 +155,13 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
 
   // ── JSON-first row editor ────────────────────────────────────────────────
   // Local editable copy of the parsed profile fields. Keys are committed to
-  // profileJson on blur (so they are never re-normalized mid-typing); values
-  // and types commit on change. This makes every key/value directly editable
+  // profileJson on blur (so they are never re-normalized mid-typing); valid
+  // values and types commit as they change. This makes every key/value directly editable
   // instead of the old read-only "KEYS (preview)" chips.
   const [jsonFields, setJsonFields] = useState<WorkflowVariableField[]>(() => parsed.fields);
   useEffect(() => {
-    setJsonFields(parsed.fields);
+    const timer = window.setTimeout(() => setJsonFields(parsed.fields), 0);
+    return () => window.clearTimeout(timer);
   }, [parsed.fields]);
 
   const saveJsonFields = useCallback((next: WorkflowVariableField[]) => {
@@ -172,9 +173,13 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
     return keys.every(isValidVariableKey) && new Set(keys).size === keys.length;
   }, []);
 
-  const updateJsonField = useCallback((fieldId: string, patch: Partial<WorkflowVariableField>) => {
-    setJsonFields((prev) => prev.map((field) => field.id === fieldId ? { ...field, ...patch } : field));
-  }, []);
+  const updateJsonField = useCallback((fieldId: string, patch: Partial<WorkflowVariableField>, save = false) => {
+    setJsonFields((prev) => {
+      const next = prev.map((field) => field.id === fieldId ? { ...field, ...patch } : field);
+      if (save && canSaveJsonFields(next)) saveJsonFields(next);
+      return next;
+    });
+  }, [canSaveJsonFields, saveJsonFields]);
 
   const commitJsonField = useCallback((fieldId: string, patch: Partial<WorkflowVariableField>) => {
     setJsonFields((prev) => {
@@ -306,9 +311,9 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
                             {field.type === "color" ? (
                               <div style={{ display: "flex", gap: 6 }}>
                                 <input type="color" value={isValidHexColor(field.value) ? normalizeHexColor(field.value) : "#000000"} disabled={readOnly} aria-label={`${field.key || config.displayName} color picker`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => commitJsonField(field.id, { value: event.target.value.toUpperCase() })} style={{ width: 32, height: 28, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 5, padding: 2, background: "rgba(0,0,0,0.16)", cursor: readOnly ? "default" : "pointer" }} />
-                                <input value={field.value} disabled={readOnly} placeholder={option.placeholder} aria-label={`${field.key || config.displayName} color value`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => commitJsonField(field.id, { value: event.target.value })} onBlur={(event) => commitJsonField(field.id, { value: normalizeHexColor(event.target.value) })} style={{ minWidth: 0, flex: 1, borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.16)", color: "rgba(255,255,255,0.82)", padding: "6px 7px", fontFamily: "monospace", fontSize: 11, outline: "none" }} />
+                                <input value={field.value} disabled={readOnly} placeholder={option.placeholder} aria-label={`${field.key || config.displayName} color value`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => updateJsonField(field.id, { value: event.target.value }, true)} onBlur={(event) => commitJsonField(field.id, { value: normalizeHexColor(event.target.value) })} style={{ minWidth: 0, flex: 1, borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.16)", color: "rgba(255,255,255,0.82)", padding: "6px 7px", fontFamily: "monospace", fontSize: 11, outline: "none" }} />
                               </div>
-                            ) : <textarea value={field.value} disabled={readOnly} placeholder={option.placeholder} aria-label={`${field.key || config.displayName} value`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => commitJsonField(field.id, { value: event.target.value })} style={{ width: "100%", minHeight: 38, resize: "vertical", boxSizing: "border-box", borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.16)", color: "rgba(255,255,255,0.82)", padding: "6px 7px", fontFamily: field.type === "json" ? "monospace" : "inherit", fontSize: 11, lineHeight: 1.4, outline: "none" }} />}
+                            ) : <textarea value={field.value} disabled={readOnly} placeholder={option.placeholder} aria-label={`${field.key || config.displayName} value`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => updateJsonField(field.id, { value: event.target.value }, true)} onBlur={(event) => commitJsonField(field.id, { value: event.target.value })} style={{ width: "100%", minHeight: 38, resize: "vertical", boxSizing: "border-box", borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.16)", color: "rgba(255,255,255,0.82)", padding: "6px 7px", fontFamily: field.type === "json" ? "monospace" : "inherit", fontSize: 11, lineHeight: 1.4, outline: "none" }} />}
                             {field.key && (!validKey || duplicate || !validColor) && <span style={{ color: "#f87171", fontSize: 9 }}>{duplicate ? "Duplicate key in this node" : !validColor ? "Use a hex color such as #2F6B5F" : "Keys use letters, numbers, and _"}</span>}
                           </div>
                           <select value={field.type} disabled={readOnly} aria-label={`${field.key || config.displayName} type`} onMouseDown={fieldMouseDown} className="nodrag" onChange={(event) => commitJsonField(field.id, { type: event.target.value as WorkflowVariableType })} style={{ width: "100%", borderRadius: 5, border: "1px solid rgba(255,255,255,0.1)", background: "#151821", color: "rgba(255,255,255,0.78)", padding: "6px 4px", fontSize: 10, outline: "none" }}>{TYPE_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>

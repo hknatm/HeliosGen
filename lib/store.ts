@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 
 // Migration: move saved data from old localStorage key to new key.
 // Always overwrite — the old key is the source of truth if it still exists,
@@ -25,6 +25,84 @@ import {
   EdgeChange,
   Connection,
 } from "@xyflow/react";
+
+const PERSIST_DELAY_MS = 350;
+const PERSIST_MAX_WAIT_MS = 1_000;
+const pendingPersistWrites = new Map<string, StorageValue<unknown>>();
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const persistMaxTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let persistFlushListenerInstalled = false;
+let persistFailureReported = false;
+
+function writePersistValue(name: string, value: StorageValue<unknown>): boolean {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    localStorage.setItem(name, JSON.stringify(value));
+    persistFailureReported = false;
+    return true;
+  } catch (error) {
+    // Keep the pending snapshot so the next edit/explicit flush can retry.
+    console.error("[workflow-storage] Could not persist workflow state:", error);
+    if (typeof window !== "undefined" && !persistFailureReported) {
+      persistFailureReported = true;
+      window.dispatchEvent(new CustomEvent("helios-workflow-storage-error"));
+    }
+    return false;
+  }
+}
+
+function clearPersistTimers(name: string) {
+  const trailing = persistTimers.get(name);
+  const maximum = persistMaxTimers.get(name);
+  if (trailing) clearTimeout(trailing);
+  if (maximum) clearTimeout(maximum);
+  persistTimers.delete(name);
+  persistMaxTimers.delete(name);
+}
+
+function flushPersistWrite(name: string) {
+  const pending = pendingPersistWrites.get(name);
+  const written = pending ? writePersistValue(name, pending) : true;
+  if (written) pendingPersistWrites.delete(name);
+  clearPersistTimers(name);
+}
+
+export function flushPersistWrites() {
+  for (const name of [...pendingPersistWrites.keys()]) flushPersistWrite(name);
+}
+
+/** Defer serialization and localStorage I/O, with a bounded durability window. */
+export function deferredJSONStorage<T>(): PersistStorage<T, void> {
+  if (typeof window !== "undefined" && !persistFlushListenerInstalled) {
+    window.addEventListener("pagehide", flushPersistWrites);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushPersistWrites();
+    });
+    persistFlushListenerInstalled = true;
+  }
+  return {
+    getItem: (name) => {
+      const pending = pendingPersistWrites.get(name);
+      if (pending) return pending as StorageValue<T>;
+      const stored = localStorage.getItem(name);
+      return stored ? JSON.parse(stored) as StorageValue<T> : null;
+    },
+    setItem: (name, value) => {
+      pendingPersistWrites.set(name, value as StorageValue<unknown>);
+      const active = persistTimers.get(name);
+      if (active) clearTimeout(active);
+      persistTimers.set(name, setTimeout(() => flushPersistWrite(name), PERSIST_DELAY_MS));
+      if (!persistMaxTimers.has(name)) {
+        persistMaxTimers.set(name, setTimeout(() => flushPersistWrite(name), PERSIST_MAX_WAIT_MS));
+      }
+    },
+    removeItem: (name) => {
+      clearPersistTimers(name);
+      pendingPersistWrites.delete(name);
+      localStorage.removeItem(name);
+    },
+  };
+}
 
 export type NodeStatus = "idle" | "pending" | "running" | "done" | "error";
 export type GenerateMode = "t2i" | "t2v" | "i2i" | "i2v";
@@ -801,7 +879,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
     },
     {
       name: process.env.NEXT_PUBLIC_GUEST_MODE === "true" ? "heliosgen-guest" : "heliosgen",
-      storage: createJSONStorage(() => localStorage),
+      storage: deferredJSONStorage(),
       partialize: (s) => ({
         spaces: s.spaces.map((sp) => ({
           ...sp,

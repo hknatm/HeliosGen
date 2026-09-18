@@ -46,6 +46,18 @@ export function profileSourceFieldsFor(source: Node<NodeData>): WorkflowVariable
   return legacyField(source);
 }
 
+/** Resolve a Variable node when it is deliberately connected as plain prompt text. */
+export function variableNodePromptText(source: Node<NodeData>): string {
+  const fields = profileSourceFieldsFor(source);
+  if (fields.length > 0) {
+    return fields
+      .filter((field) => isValidVariableKey(field.key) && field.value.trim())
+      .map((field) => fields.length === 1 ? serializeVariableValue(field).trim() : `${field.key}: ${serializeVariableValue(field).trim()}`)
+      .join("\n");
+  }
+  return typeof source.data.variableValue === "string" ? source.data.variableValue.trim() : "";
+}
+
 /**
  * Resolve all variables feeding a composer node as namespaced tokens
  * (`style.*` / `brand.*` for profile sources, unprefixed for Variable nodes).

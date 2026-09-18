@@ -42,6 +42,7 @@ async function main() {
   const combined = buildAgentSystemPrompt(COMPOSER_OUTPUT_CONTRACT);
   assert(combined.includes(DEFAULT_AGENT_PROMPT), "combined prompt embeds the agent prompt");
   assert(combined.includes("final prompt"), "combined prompt includes the composer contract");
+  assert(combined.includes("listing_title") && combined.includes("mandatory"), "composer contract preserves listing identity fields as mandatory subjects");
   assert(buildAgentSystemPrompt() === DEFAULT_AGENT_PROMPT, "no contract → agent prompt only");
 
   console.log("── Legacy stored-prompt migration ───────────────────────────");
