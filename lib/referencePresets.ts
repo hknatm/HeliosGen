@@ -55,3 +55,19 @@ export function saveReferencePresetSettings(value: ReferencePresetSettings): Ref
   window.dispatchEvent(new CustomEvent(REFERENCE_PRESETS_CHANGED_EVENT));
   return normalized;
 }
+
+/** Replace a linked preset in place, or append a new preset for custom metadata. */
+export function upsertReferencePreset(
+  settings: ReferencePresetSettings,
+  preset: ReferenceMetadataPreset,
+): { settings: ReferencePresetSettings; updated: boolean } {
+  const index = settings.presets.findIndex((item) => item.id === preset.id);
+  if (index < 0) {
+    return {
+      settings: normalizeReferencePresetSettings({ ...settings, presets: [...settings.presets, preset] }),
+      updated: false,
+    };
+  }
+  const presets = settings.presets.map((item, itemIndex) => itemIndex === index ? preset : item);
+  return { settings: normalizeReferencePresetSettings({ ...settings, presets }), updated: true };
+}

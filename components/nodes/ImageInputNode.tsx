@@ -14,6 +14,7 @@ import {
   MAX_REFERENCE_PRESETS,
   REFERENCE_PRESETS_CHANGED_EVENT,
   saveReferencePresetSettings,
+  upsertReferencePreset,
   type ReferenceMetadataPreset,
 } from "@/lib/referencePresets";
 
@@ -192,13 +193,22 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
     const name = item.name.trim();
     if (!name) { const message = "Add a reference name before saving a preset."; setPresetStatus(message); addToast(message, "error"); return; }
     const current = loadReferencePresetSettings();
-    if (current.presets.length >= MAX_REFERENCE_PRESETS) { const message = `You can save up to ${MAX_REFERENCE_PRESETS} reference presets.`; setPresetStatus(message); addToast(message, "error"); return; }
-    const preset: ReferenceMetadataPreset = { id: uid(), label: name, name, usageNote: item.usageNote.trim() };
+    const linkedPreset = item.presetId ? current.presets.find((preset) => preset.id === item.presetId) : undefined;
+    if (!linkedPreset && current.presets.length >= MAX_REFERENCE_PRESETS) { const message = `You can save up to ${MAX_REFERENCE_PRESETS} reference presets.`; setPresetStatus(message); addToast(message, "error"); return; }
+    const preset: ReferenceMetadataPreset = {
+      id: linkedPreset?.id ?? uid(),
+      label: name,
+      name,
+      usageNote: item.usageNote.trim(),
+    };
     try {
-      const saved = saveReferencePresetSettings({ version: 1, presets: [...current.presets, preset] });
+      const result = upsertReferencePreset(current, preset);
+      const saved = saveReferencePresetSettings(result.settings);
       setPresets(saved.presets);
       patchItem(item.id, { presetId: preset.id });
-      const message = `Saved “${name}” as a reference preset.`;
+      const message = result.updated
+        ? `Updated reference preset “${name}”.`
+        : `Saved “${name}” as a reference preset.`;
       setPresetStatus(message);
       addToast(message, "success");
     } catch {
@@ -318,7 +328,7 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
                       {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
                     </select>
                   </label>
-                  {!readOnly && <button type="button" onClick={() => savePreset(item)} aria-label={`Save preset for Reference ${index + 1}`} title="Save the current name and description as a reusable preset"><Save size={12} /> Save preset</button>}
+                  {!readOnly && <button type="button" onClick={() => savePreset(item)} aria-label={`${item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Update" : "Save"} preset for Reference ${index + 1}`} title={item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Replace the selected preset with the current name and description" : "Save the current name and description as a reusable preset"}><Save size={12} /> {item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Update preset" : "Save preset"}</button>}
                 </div>
                 <label>
                   <span>Reference {index + 1} name / tag</span>

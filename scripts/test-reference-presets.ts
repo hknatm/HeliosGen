@@ -5,6 +5,7 @@ import {
   REFERENCE_PRESETS_CHANGED_EVENT,
   REFERENCE_PRESETS_STORAGE_KEY,
   saveReferencePresetSettings,
+  upsertReferencePreset,
 } from "../lib/referencePresets";
 import { replacementDraft, replacementFailurePatch } from "../lib/referenceImageState";
 
@@ -34,6 +35,30 @@ const capped = normalizeReferencePresetSettings({
   })),
 });
 assert.equal(capped.presets.length, 100);
+
+const updatedPreset = upsertReferencePreset(normalized, {
+  id: "product",
+  label: "Hero product",
+  name: "Hero product",
+  usageNote: "Preserve the new packaging.",
+});
+assert.equal(updatedPreset.updated, true);
+assert.equal(updatedPreset.settings.presets.length, 1, "updating a selected preset does not create a duplicate");
+assert.deepEqual(updatedPreset.settings.presets[0], {
+  id: "product",
+  label: "Hero product",
+  name: "Hero product",
+  usageNote: "Preserve the new packaging.",
+});
+
+const addedPreset = upsertReferencePreset(normalized, {
+  id: "background",
+  label: "Background",
+  name: "Background",
+  usageNote: "Use for atmosphere only.",
+});
+assert.equal(addedPreset.updated, false);
+assert.equal(addedPreset.settings.presets.length, 2, "custom metadata creates a new preset");
 
 const previous = {
   id: "product-image",
