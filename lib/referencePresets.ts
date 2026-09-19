@@ -71,3 +71,13 @@ export function upsertReferencePreset(
   const presets = settings.presets.map((item, itemIndex) => itemIndex === index ? preset : item);
   return { settings: normalizeReferencePresetSettings({ ...settings, presets }), updated: true };
 }
+
+export function deleteReferencePreset(
+  settings: ReferencePresetSettings,
+  presetId: string,
+): ReferencePresetSettings {
+  return normalizeReferencePresetSettings({
+    ...settings,
+    presets: settings.presets.filter((preset) => preset.id !== presetId),
+  });
+}

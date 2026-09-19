@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  deleteReferencePreset,
   loadReferencePresetSettings,
   normalizeReferencePresetSettings,
   REFERENCE_PRESETS_CHANGED_EVENT,
@@ -59,6 +60,11 @@ const addedPreset = upsertReferencePreset(normalized, {
 });
 assert.equal(addedPreset.updated, false);
 assert.equal(addedPreset.settings.presets.length, 2, "custom metadata creates a new preset");
+
+const deletedPreset = deleteReferencePreset(addedPreset.settings, "product");
+assert.equal(deletedPreset.presets.length, 1, "deleting a preset removes only the selected preset");
+assert.equal(deletedPreset.presets[0]?.id, "background");
+assert.deepEqual(deleteReferencePreset(deletedPreset, "missing"), deletedPreset, "deleting an unknown preset is a no-op");
 
 const previous = {
   id: "product-image",

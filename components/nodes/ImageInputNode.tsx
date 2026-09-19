@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 import { replacementDraft, replacementFailurePatch } from "@/lib/referenceImageState";
 import {
+  deleteReferencePreset,
   loadReferencePresetSettings,
   MAX_REFERENCE_PRESETS,
   REFERENCE_PRESETS_CHANGED_EVENT,
@@ -218,6 +219,28 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
     }
   }, [addToast, patchItem]);
 
+  const deletePreset = useCallback((item: ReferenceImageInput) => {
+    const presetId = item.presetId;
+    if (!presetId) return;
+    const current = loadReferencePresetSettings();
+    const preset = current.presets.find((candidate) => candidate.id === presetId);
+    if (!preset) { patchItem(item.id, { presetId: undefined }); return; }
+    if (!window.confirm(`Delete reference preset “${preset.label}”? References already using it will keep their current name and usage note.`)) return;
+    try {
+      const saved = saveReferencePresetSettings(deleteReferencePreset(current, presetId));
+      setPresets(saved.presets);
+      // The row keeps its copied metadata and becomes custom after deletion.
+      patchItem(item.id, { presetId: undefined });
+      const message = `Deleted reference preset “${preset.label}”.`;
+      setPresetStatus(message);
+      addToast(message, "success");
+    } catch {
+      const message = "The reference preset could not be deleted in this browser.";
+      setPresetStatus(message);
+      addToast(message, "error");
+    }
+  }, [addToast, patchItem]);
+
   const move = useCallback((index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= references.length) return;
@@ -328,7 +351,10 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
                       {presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
                     </select>
                   </label>
-                  {!readOnly && <button type="button" onClick={() => savePreset(item)} aria-label={`${item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Update" : "Save"} preset for Reference ${index + 1}`} title={item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Replace the selected preset with the current name and description" : "Save the current name and description as a reusable preset"}><Save size={12} /> {item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Update preset" : "Save preset"}</button>}
+                  {!readOnly && <div className="multi-reference-preset-actions">
+                    <button type="button" onClick={() => savePreset(item)} aria-label={`${item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Update" : "Save"} preset for Reference ${index + 1}`} title={item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Replace the selected preset with the current name and description" : "Save the current name and description as a reusable preset"}><Save size={12} /> {item.presetId && presets.some((preset) => preset.id === item.presetId) ? "Update" : "Save"}</button>
+                    {item.presetId && presets.some((preset) => preset.id === item.presetId) && <button type="button" className="multi-reference-preset-delete" onClick={() => deletePreset(item)} aria-label={`Delete selected preset for Reference ${index + 1}`} title="Delete the selected preset"><Trash2 size={12} /> Delete</button>}
+                  </div>}
                 </div>
                 <label>
                   <span>Reference {index + 1} name / tag</span>

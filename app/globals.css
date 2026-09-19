@@ -240,7 +240,9 @@ body,
 .multi-reference-fields { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .multi-reference-preset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: end; }
 .multi-reference-preset-row select { width: 100%; min-width: 0; min-height: 29px; border: 1px solid var(--ui-node-input-border); border-radius: 6px; background: var(--ui-node-input-surface); color: var(--foreground); padding: 5px 6px; font: inherit; font-size: 9px; outline: none; }
+.multi-reference-preset-actions { display: flex; gap: 4px; }
 .multi-reference-preset-row button { min-height: 29px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border: 1px solid var(--ui-control-border); border-radius: 6px; background: var(--ui-control-surface); color: var(--muted-strong); padding: 5px 6px; font-size: 9px; font-weight: 650; cursor: pointer; }
+.multi-reference-preset-row .multi-reference-preset-delete:hover { color: var(--destructive); border-color: color-mix(in srgb, var(--destructive) 45%, var(--ui-control-border)); }
 .multi-reference-fields label > span { display: block; margin-bottom: 3px; color: var(--muted-strong); font-size: 9px; font-weight: 600; }
 .multi-reference-fields input, .multi-reference-fields textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--ui-node-input-border); border-radius: 6px; background: var(--ui-node-input-surface); color: var(--foreground); padding: 6px 7px; font: inherit; font-size: 10px; line-height: 1.35; resize: vertical; outline: none; }
 .multi-reference-fields input:focus-visible, .multi-reference-fields textarea:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent); }
