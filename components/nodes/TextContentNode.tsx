@@ -70,18 +70,6 @@ export default function TextContentNode({ id, data, selected }: NodeProps<TextCo
   }, [availableFonts, content, id, updateNodeData]);
 
   useEffect(() => {
-    const fieldsElement = fieldsRef.current;
-    if (!fieldsElement) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || fieldsElement.scrollHeight <= fieldsElement.clientHeight) return;
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-    };
-    fieldsElement.addEventListener("wheel", onWheel, { passive: true });
-    return () => fieldsElement.removeEventListener("wheel", onWheel);
-  }, []);
-
-  useEffect(() => {
     if (!selected || !cardRef.current) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (readOnly || (event.key !== "Delete" && event.key !== "Backspace")) return;

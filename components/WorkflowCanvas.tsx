@@ -29,7 +29,7 @@ import { edgeStyle } from "@/lib/edgeStyles";
 import { createClient } from "@/lib/supabase/client";
 import { sha256Hex } from "@/lib/assetHash";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";
-import { loadCustomProviderConfig } from "@/lib/customProvider";
+import { customModelSupportsVision, loadCustomProviderConfig } from "@/lib/customProvider";
 import { buildAgentSystemPrompt, COMPOSER_OUTPUT_CONTRACT, COPY_OUTPUT_CONTRACT, resolveAgentSystemPrompt } from "@/lib/systemPrompt";
 import { hasRenderableText, rendererInputSignature, resolveTextRendererContent, resolveTextRendererInputs } from "@/lib/textRendererSources";
 import { buildCopyComposerPrompt, hasRefinedCopy, mergeRefinedCopy, parseCopyJson, rawCopySignature, resolveCopyComposerInputs, validateRefinedCopy } from "@/lib/copyComposer";
@@ -1693,8 +1693,8 @@ export default function WorkflowCanvas() {
         }
         const references = referenceResolution.references;
         const agentModel = (node.data.model as string | undefined) ?? "claude-sonnet-4-6";
-        if (references.length > 0 && agentModel !== "gpt-5-2") {
-          const error = "Connected reference images require GPT 5.2 · Vision.";
+        if (references.length > 0 && agentModel !== "gpt-5-2" && !customModelSupportsVision(agentModel)) {
+          const error = "Connected reference images require GPT 5.2 · Vision or a custom model marked Vision.";
           updateNodeData(nodeId, { status: "error", errorMsg: error });
           push(`[${node.id}] skipped — ${error}`, false);
           continue;
@@ -1732,8 +1732,9 @@ export default function WorkflowCanvas() {
                 typeof node.data.systemPromptId === "string" ? node.data.systemPromptId : undefined,
                 connectedValues.length ? COMPOSER_OUTPUT_CONTRACT : undefined,
               ),
-              ...(customProvider ? { customProvider } : {}),
+              ...(customProvider ? { customProvider: { ...customProvider, vision: customModelSupportsVision(model) } } : {}),
             }),
+            signal: AbortSignal.timeout(300_000),
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({ error: "Generation failed" }));

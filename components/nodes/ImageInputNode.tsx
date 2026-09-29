@@ -313,7 +313,7 @@ export default function ImageInputNode({ id, data }: NodeProps<ImageInputNodeTyp
       </div>
 
       <div
-        className="multi-reference-list nowheel nodrag"
+        className="multi-reference-list nodrag"
         role="list"
         aria-label="Ordered reference images"
         onMouseDown={(event) => event.stopPropagation()}

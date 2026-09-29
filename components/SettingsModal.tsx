@@ -13,6 +13,7 @@ import {
   loadCustomProviderModels,
   saveCustomProviderModels,
   setCustomProviderModelEnabled,
+  setCustomProviderModelVision,
   syncCustomProviderModels,
 } from "@/lib/customProvider";
 import { DEFAULT_AGENT_PROMPT, loadSystemPromptSettings, saveSystemPromptSettings, type SystemPromptPreset, type SystemPromptSettings } from "@/lib/systemPrompt";
@@ -1342,8 +1343,8 @@ function CustomProviderPanel() {
     setError(null);
     try {
       const synced = await syncCustomProviderModels(config);
-      // syncCustomProviderModels already preserves the enabled state of
-      // unchanged ids; new models default to enabled.
+      // syncCustomProviderModels preserves enabled and vision capabilities for
+      // unchanged ids; new models default to enabled and text-only.
       const merged = synced.map((m) => ({ ...m, name: m.name || m.id }));
       saveCustomProviderModels(merged);
       setModels(merged);
@@ -1533,29 +1534,45 @@ function CustomProviderPanel() {
                   </div>
                 </div>
 
-                {/* Enable/disable toggle — existing-style accessible control */}
-                <button
-                  role="switch"
-                  aria-checked={m.enabled !== false}
-                  aria-label={`${m.enabled !== false ? "Disable" : "Enable"} ${m.name}`}
-                  onClick={() => {
-                    const next = !(m.enabled !== false);
-                    setCustomProviderModelEnabled(m.id, next);
-                    setModels((prev) => prev.map((x) => (x.id === m.id ? { ...x, enabled: next } : x)));
-                  }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: "6px", flexShrink: 0,
-                    padding: "4px 10px", borderRadius: "6px", border: "1px solid",
-                    background: m.enabled !== false ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.04)",
-                    borderColor: m.enabled !== false ? "rgba(74,222,128,0.25)" : "rgba(255,255,255,0.1)",
-                    fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em",
-                    color: m.enabled !== false ? "rgba(134,239,172,0.9)" : "rgba(255,255,255,0.35)",
-                    textTransform: "uppercase", whiteSpace: "nowrap", cursor: "pointer",
-                    fontFamily: "inherit", transition: "background 120ms, color 120ms",
-                  }}
-                >
-                  {m.enabled !== false ? "Enabled" : "Disabled"}
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <button
+                    role="switch"
+                    aria-checked={m.vision === true}
+                    aria-label={`${m.vision ? "Disable" : "Enable"} image input for ${m.name}`}
+                    title="Enable only when this model accepts OpenAI-compatible image_url message parts"
+                    onClick={() => {
+                      const next = !m.vision;
+                      setCustomProviderModelVision(m.id, next);
+                      setModels((prev) => prev.map((x) => (x.id === m.id ? { ...x, vision: next } : x)));
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "6px", border: "1px solid",
+                      background: m.vision ? "rgba(96,165,250,0.12)" : "rgba(255,255,255,0.04)",
+                      borderColor: m.vision ? "rgba(96,165,250,0.32)" : "rgba(255,255,255,0.1)",
+                      color: m.vision ? "rgba(147,197,253,0.95)" : "rgba(255,255,255,0.35)",
+                      fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap", cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >Vision {m.vision ? "On" : "Off"}</button>
+                  <button
+                    role="switch"
+                    aria-checked={m.enabled !== false}
+                    aria-label={`${m.enabled !== false ? "Disable" : "Enable"} ${m.name}`}
+                    onClick={() => {
+                      const next = !(m.enabled !== false);
+                      setCustomProviderModelEnabled(m.id, next);
+                      setModels((prev) => prev.map((x) => (x.id === m.id ? { ...x, enabled: next } : x)));
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "6px", border: "1px solid",
+                      background: m.enabled !== false ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.04)",
+                      borderColor: m.enabled !== false ? "rgba(74,222,128,0.25)" : "rgba(255,255,255,0.1)",
+                      fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em",
+                      color: m.enabled !== false ? "rgba(134,239,172,0.9)" : "rgba(255,255,255,0.35)",
+                      textTransform: "uppercase", whiteSpace: "nowrap", cursor: "pointer",
+                      fontFamily: "inherit", transition: "background 120ms, color 120ms",
+                    }}
+                  >{m.enabled !== false ? "Enabled" : "Disabled"}</button>
+                </div>
               </div>
             ))}
           </div>

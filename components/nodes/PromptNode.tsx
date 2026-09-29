@@ -392,18 +392,6 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
         e.preventDefault();
       }
     };
-    const onWheel = (e: WheelEvent) => {
-      if (selectedRef.current) {
-        if (e.ctrlKey) {
-          // Zoom gesture: prevent browser zoom, let ReactFlow handle canvas zoom
-          e.preventDefault();
-        } else {
-          // Scroll gesture: keep canvas still while textarea scrolls
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }
-      }
-    };
     const onMouseMove = (e: MouseEvent) => {
       const chips = highlightRef.current?.querySelectorAll<HTMLElement>(".mention-chip");
       if (chips?.length) {
@@ -421,12 +409,10 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
     const onMouseLeave = () => closeChipPopover();
 
     el.addEventListener("mousedown", onMouseDown);
-    el.addEventListener("wheel", onWheel);
     el.addEventListener("mousemove", onMouseMove);
     el.addEventListener("mouseleave", onMouseLeave);
     return () => {
       el.removeEventListener("mousedown", onMouseDown);
-      el.removeEventListener("wheel", onWheel);
       el.removeEventListener("mousemove", onMouseMove);
       el.removeEventListener("mouseleave", onMouseLeave);
     };

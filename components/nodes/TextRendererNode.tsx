@@ -191,19 +191,6 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
     ...customModels.filter((m) => m.enabled !== false).map((item) => ({ id: customModelId(item.id), label: item.name })),
   ];
 
-  // Internal scroll must not pan the canvas.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || el.scrollHeight <= el.clientHeight) return;
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-    };
-    el.addEventListener("wheel", onWheel, { passive: true });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
-
   useEffect(() => {
     if (!modelOpen) return;
     const handler = (e: MouseEvent) => {

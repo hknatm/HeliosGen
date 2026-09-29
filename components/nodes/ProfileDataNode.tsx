@@ -104,20 +104,6 @@ export default function ProfileDataNode({ id, data, selected, config }: ProfileD
   }, [data.variables, fields, id, jsonMode, updateNodeData]);
 
   useEffect(() => {
-    const fieldsElement = fieldsRef.current;
-    if (!fieldsElement) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      const canScroll = fieldsElement.scrollHeight > fieldsElement.clientHeight;
-      if (!canScroll) return;
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-    };
-    fieldsElement.addEventListener("wheel", onWheel, { passive: true });
-    return () => fieldsElement.removeEventListener("wheel", onWheel);
-  }, []);
-
-  useEffect(() => {
     if (!selected || !cardRef.current) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (readOnly || (event.key !== "Delete" && event.key !== "Backspace")) return;

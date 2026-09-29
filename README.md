@@ -222,6 +222,24 @@ HeliosGen also applies a conservative in-process login limit (five failures,
 then a 15-minute cooldown). Set `HELIOS_TRUST_PROXY=true` only when the trusted
 proxy overwrites `X-Real-IP`; otherwise the safer global login bucket is used.
 
+AI Agent responses stream through `/api/assistant`. If Nginx fronts the app,
+disable proxy buffering and allow enough idle time for slower reasoning models:
+
+```nginx
+location /api/assistant {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+```
+
+A browser `504` while the provider later reports success usually means this
+reverse-proxy timeout expired before or during the streamed response. The app
+sends SSE keepalives after the upstream stream begins, but the proxy timeout
+must still cover reference preparation and the provider's time-to-first-byte.
+
 ---
 
 ## 3. Cloud Mode (production)

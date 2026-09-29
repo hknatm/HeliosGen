@@ -41,29 +41,40 @@ export function createLocalSession(now = Date.now()): string {
   return `${encoded}.${signature}`;
 }
 
-export function verifyLocalSession(value: string | undefined, now = Date.now()): boolean {
-  if (!value) return false;
+function readLocalSessionPayload(value: string | undefined): LocalSessionPayload | null {
+  if (!value) return null;
   const secret = sessionSecret();
-  if (!secret) return false;
+  if (!secret) return null;
   const [encoded, suppliedSignature, extra] = value.split(".");
-  if (!encoded || !suppliedSignature || extra) return false;
+  if (!encoded || !suppliedSignature || extra) return null;
 
   const expectedSignature = createHmac("sha256", secret).update(encoded).digest();
   let supplied: Buffer;
   try {
     supplied = decodeBase64Url(suppliedSignature);
   } catch {
-    return false;
+    return null;
   }
-  if (supplied.length !== expectedSignature.length || !timingSafeEqual(supplied, expectedSignature)) return false;
+  if (supplied.length !== expectedSignature.length || !timingSafeEqual(supplied, expectedSignature)) return null;
 
   try {
     const payload = JSON.parse(decodeBase64Url(encoded).toString("utf8")) as Partial<LocalSessionPayload>;
-    return payload.sub === "owner" && payload.v === SESSION_VERSION &&
-      typeof payload.exp === "number" && payload.exp > Math.floor(now / 1000);
+    if (payload.sub !== "owner" || payload.v !== SESSION_VERSION || typeof payload.exp !== "number") return null;
+    return payload as LocalSessionPayload;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function verifyLocalSession(value: string | undefined, now = Date.now()): boolean {
+  const payload = readLocalSessionPayload(value);
+  return payload !== null && payload.exp > Math.floor(now / 1000);
+}
+
+/** Returns the signed session expiry for the current owner cookie, if valid. */
+export function localSessionExpiresAt(value: string | undefined, now = Date.now()): number | null {
+  const payload = readLocalSessionPayload(value);
+  return payload && payload.exp > Math.floor(now / 1000) ? payload.exp * 1000 : null;
 }
 
 export async function verifyLocalPassword(password: string): Promise<boolean> {

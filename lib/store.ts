@@ -14,6 +14,7 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_GUEST_MODE !== "tru
 }
 import { edgeStyle } from "./edgeStyles";
 import { persistedNodeData } from "./referencePersistence";
+import { persistFinalNodeResize } from "./nodeDimensions";
 import { VIDEO_MODELS } from "./modelConfig";
 import {
   Node,
@@ -543,7 +544,8 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
         onNodesChange: (changes) =>
           set((s) => {
-            const nodes = applyNodeChanges(changes, s.nodes) as Node<NodeData>[];
+            const changedNodes = applyNodeChanges(changes, s.nodes) as Node<NodeData>[];
+            const nodes = persistFinalNodeResize(changedNodes, changes);
             const removedIds = new Set(
               changes
                 .filter((c): c is Extract<NodeChange, { type: "remove" }> => c.type === "remove")

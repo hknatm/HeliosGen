@@ -7,6 +7,7 @@ const PUBLIC_LOCAL_PATHS = new Set([
   "/login",
   "/api/auth/local-login",
   "/api/auth/local-logout",
+  "/api/auth/local-status",
   "/api/callback",
   "/favicon.ico",
   "/HG.svg",

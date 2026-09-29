@@ -8,7 +8,7 @@ import CornerResizer from "./CornerResizer";
 import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import { useReadOnly } from "@/lib/readOnlyContext";
-import { customModelId, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
+import { customModelId, customModelSupportsVision, loadCustomProviderConfig, loadCustomProviderModels } from "@/lib/customProvider";
 import { COMPOSER_OUTPUT_CONTRACT, loadSystemPromptSettings, resolveAgentSystemPrompt, type SystemPromptPreset } from "@/lib/systemPrompt";
 import { resolveComposerConnections, buildComposerContext, buildComposerPrompt } from "@/lib/composerSources";
 import { resolveInputs } from "@/lib/executor";
@@ -84,13 +84,22 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   const [systemPromptPresets, setSystemPromptPresets] = useState<SystemPromptPreset[]>(() => loadSystemPromptSettings().presets);
   const modelOptions = [
     ...MODELS,
-    ...customModels.filter((m) => m.enabled !== false).map((item) => ({ id: customModelId(item.id), label: item.name })),
+    ...customModels.filter((m) => m.enabled !== false).map((item) => ({
+      id: customModelId(item.id),
+      label: item.name,
+      vision: customModelSupportsVision(customModelId(item.id)),
+    })),
   ];
 
   useEffect(() => {
     const refresh = () => setCustomModels(loadCustomProviderModels());
     window.addEventListener("aiui-custom-provider-models-changed", refresh);
-    return () => window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+    // A provider URL change can invalidate a previously confirmed capability.
+    window.addEventListener("aiui-custom-provider-config-changed", refresh);
+    return () => {
+      window.removeEventListener("aiui-custom-provider-models-changed", refresh);
+      window.removeEventListener("aiui-custom-provider-config-changed", refresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -145,7 +154,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
   // The AI Agent can run from structured context or references alone; ordinary text is optional.
   const hasPrompt = !!localPrompt.trim() || !!connectedPrompt.trim() || hasContext || references.length > 0;
   const referencesConnected = edges.some((edge) => edge.target === id && edge.targetHandle === "references");
-  const multimodalReady = references.length === 0 || model === MULTIMODAL_AGENT_MODEL;
+  const multimodalReady = references.length === 0 || model === MULTIMODAL_AGENT_MODEL || customModelSupportsVision(model);
   const currentSignature = resolveAgentSignature(id, nodes, edges, references);
   const savedPackage = data.referencePackage as { signature?: string } | undefined;
   const packageStale = !!outputText && referencesConnected && savedPackage?.signature !== currentSignature;
@@ -207,9 +216,9 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
           model,
           references,
           systemPrompt: resolveAgentSystemPrompt(systemPromptId, hasContext ? COMPOSER_OUTPUT_CONTRACT : undefined),
-          ...(model.startsWith("custom:") ? { customProvider: loadCustomProviderConfig() } : {}),
+          ...(model.startsWith("custom:") ? { customProvider: { ...loadCustomProviderConfig(), vision: customModelSupportsVision(model) } } : {}),
         }),
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(300_000)]),
       });
 
       if (!res.ok) {
@@ -403,13 +412,13 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       <div className="flex-1 p-2.5 min-h-0">
         <div className="relative h-full rounded-[7px] overflow-hidden">
 
-          {/* Output display — nowheel tells React Flow to skip its scroll-to-pan handler */}
+          {/* Trackpad gestures remain owned by the canvas, even over output. */}
           <div
             ref={outputRef}
             role="status"
             aria-live="polite"
             aria-atomic="true"
-            className="nowheel absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-foreground leading-[1.6] overflow-y-auto select-text"
+            className="absolute inset-0 px-3 pt-10 pb-10 text-[13px] text-foreground leading-[1.6] overflow-y-auto select-text"
             style={{ whiteSpace: "pre-wrap", overscrollBehavior: "contain", display: viewMode === "output" ? undefined : "none" }}
             onMouseDown={(e) => { if (selected) e.stopPropagation(); }}
           >
@@ -512,6 +521,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
               >
                 <span className="text-[11px] text-[#A0A0A0] hover:text-white transition-colors">
                   {modelOptions.find((m) => m.id === model)?.label ?? model}
+                  {model.startsWith("custom:") && customModelSupportsVision(model) ? " · Vision" : ""}
                 </span>
                 <ChevronIcon open={modelOpen} />
               </button>
@@ -527,7 +537,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                       onClick={(e) => { e.stopPropagation(); updateNodeData(id, { model: m.id, referencePackage: undefined, agentInputSignature: undefined }); setModelOpen(false); }}
                       className={`w-full text-left px-3 py-[7px] text-[11px] hover:bg-[#141C28] transition-colors ${model === m.id ? "text-white" : "text-[#A0A0A0]"}`}
                     >
-                      {m.label}
+                      {m.label}{"vision" in m && m.vision ? " · Vision" : ""}
                     </button>
                   ))}
                 </div>
@@ -566,7 +576,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
                 warningMessages={[
                   ...(!hasPrompt ? ["Enter or connect a prompt or structured context"] : []),
                   ...(!canGenerate ? [model.startsWith("custom:") ? "Configure the custom provider" : "Add a Kie.ai API key in Settings"] : []),
-                  ...(!multimodalReady ? ["Select GPT 5.2 · Vision to analyze connected references"] : []),
+                  ...(!multimodalReady ? ["Select GPT 5.2 · Vision or a custom model marked Vision to analyze references"] : []),
                   ...(referenceResolution.error ? [referenceResolution.error] : []),
                 ]}
               />

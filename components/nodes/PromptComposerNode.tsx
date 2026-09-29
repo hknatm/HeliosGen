@@ -102,32 +102,6 @@ export default function PromptComposerNode({ id, data, selected }: NodeProps<Pro
     return () => document.removeEventListener("mousedown", handler);
   }, [modelOpen]);
 
-  // Internal scroll (connected-keys list + final-prompt output) must not pan the
-  // canvas. Mirror VariableNode/ProfileDataNode: stop wheel propagation only when
-  // the wheel target sits inside a scrollable region that can actually scroll.
-  useEffect(() => {
-    const card = cardRef.current;
-    if (!card) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      let el = event.target as HTMLElement | null;
-      while (el && el !== card) {
-        const style = getComputedStyle(el);
-        if (
-          (style.overflowY === "auto" || style.overflowY === "scroll") &&
-          el.scrollHeight > el.clientHeight
-        ) {
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          return;
-        }
-        el = el.parentElement;
-      }
-    };
-    card.addEventListener("wheel", onWheel, { passive: true });
-    return () => card.removeEventListener("wheel", onWheel);
-  }, []);
-
   const handleProcessAI = useCallback(async () => {
     if (busy || readOnly || !hasComposerContext) return;
     const seq = ++requestSeqRef.current;

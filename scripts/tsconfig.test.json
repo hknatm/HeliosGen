@@ -22,6 +22,7 @@
     "../lib/systemPrompt.ts",
     "../lib/executor.ts",
     "../lib/modelConfig.ts",
+    "../lib/nodeDimensions.ts",
     "../lib/localAuth.ts",
     "../lib/localLoginRateLimit.ts",
     "../lib/localGeneratedAsset.ts",
@@ -51,6 +52,8 @@
     "test-composer.ts",
     "test-text-renderer.ts",
     "test-copy-composer.ts",
+    "test-custom-provider.ts",
+    "test-node-dimensions.ts",
     "test-render-e2e.ts"
   ]
 }

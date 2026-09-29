@@ -1,4 +1,4 @@
-import { callbackUrl, createLocalSession, providerAssetUrl, safeNextPath, verifyCallbackSecret, verifyLocalPassword, verifyLocalSession, verifyProviderAssetAccess } from "../lib/localAuth";
+import { callbackUrl, createLocalSession, localSessionExpiresAt, providerAssetUrl, safeNextPath, verifyCallbackSecret, verifyLocalPassword, verifyLocalSession, verifyProviderAssetAccess } from "../lib/localAuth";
 import { clearLoginFailures, loginRateLimit, recordLoginFailure, resetLoginRateLimitForTests } from "../lib/localLoginRateLimit";
 
 let failures = 0;
@@ -15,6 +15,8 @@ async function main() {
   const now = 1_700_000_000_000;
   const token = createLocalSession(now);
   assert(verifyLocalSession(token, now + 1_000), "accepts a valid signed owner session");
+  assert(localSessionExpiresAt(token, now + 1_000) === now + 12 * 60 * 60 * 1_000, "reports the signed session expiry for client polling");
+  assert(localSessionExpiresAt(token, now + 13 * 60 * 60 * 1_000) === null, "does not report an expired session as active");
   assert(!verifyLocalSession(`${token}x`, now + 1_000), "rejects a tampered owner session");
   assert(!verifyLocalSession(token, now + 13 * 60 * 60 * 1_000), "rejects an expired owner session");
   assert(safeNextPath("/workflow/abc?x=1") === "/workflow/abc?x=1", "preserves a safe same-origin next path");

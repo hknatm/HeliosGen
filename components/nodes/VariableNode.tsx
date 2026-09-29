@@ -60,20 +60,6 @@ export default function VariableNode({ id, data, selected }: NodeProps<VariableN
   }, [data.variables, fields, id, updateNodeData]);
 
   useEffect(() => {
-    const fieldsElement = fieldsRef.current;
-    if (!fieldsElement) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      const canScroll = fieldsElement.scrollHeight > fieldsElement.clientHeight;
-      if (!canScroll) return;
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-    };
-    fieldsElement.addEventListener("wheel", onWheel, { passive: true });
-    return () => fieldsElement.removeEventListener("wheel", onWheel);
-  }, []);
-
-  useEffect(() => {
     if (!selected || !cardRef.current) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Delete" && event.key !== "Backspace") return;

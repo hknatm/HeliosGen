@@ -1,4 +1,6 @@
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 import { NextRequest } from "next/server";
 import { getKieToken } from "@/lib/getKieToken";
@@ -24,6 +26,51 @@ function textContent(content: MessageContent): string {
     : content.filter((part): part is TextContent => part.type === "text").map((part) => part.text).join("\n\n");
 }
 
+/** Keep reverse proxies from treating a quiet model stream as an idle request. */
+function streamingResponse(body: ReadableStream<Uint8Array> | null): Response {
+  if (!body) return new Response(null, { status: 502 });
+  const reader = body.getReader();
+  const keepalive = new TextEncoder().encode(": keepalive\n\n");
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let closed = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      timer = setInterval(() => {
+        if (!closed) controller.enqueue(keepalive);
+      }, 15_000);
+      void (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+          closed = true;
+          if (timer) clearInterval(timer);
+          controller.close();
+        } catch (error) {
+          closed = true;
+          if (timer) clearInterval(timer);
+          controller.error(error);
+        }
+      })();
+    },
+    async cancel(reason) {
+      closed = true;
+      if (timer) clearInterval(timer);
+      await reader.cancel(reason);
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
 // Models that use OpenAI-compatible chat/completions endpoint
 const OPENAI_COMPAT_ENDPOINTS: Record<string, string> = {
   "gemini-3-flash":  "https://api.kie.ai/gemini-3-flash/v1/chat/completions",
@@ -42,7 +89,7 @@ export async function POST(req: NextRequest) {
     azureEndpoint?: string;
     azureDeployment?: string;
     azureModelName?: string;
-    customProvider?: { baseUrl?: string; apiKey?: string };
+    customProvider?: { baseUrl?: string; apiKey?: string; vision?: boolean };
     references?: ReferenceImage[];
   };
 
@@ -67,8 +114,9 @@ export async function POST(req: NextRequest) {
       status: 400, headers: { "Content-Type": "application/json" },
     });
   }
-  if (references.length > 0 && model !== MULTIMODAL_AGENT_MODEL) {
-    return new Response(JSON.stringify({ error: `Connected reference images require ${MULTIMODAL_AGENT_MODEL}.` }), {
+  const customVision = isCustomModelId(model) && body.customProvider?.vision === true;
+  if (references.length > 0 && model !== MULTIMODAL_AGENT_MODEL && !customVision) {
+    return new Response(JSON.stringify({ error: `Connected reference images require ${MULTIMODAL_AGENT_MODEL} or a vision-enabled custom model.` }), {
       status: 400, headers: { "Content-Type": "application/json" },
     });
   }
@@ -93,6 +141,62 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Resolve durable provider-access URLs before choosing the upstream adapter.
+  // Kie additionally requires its temporary upload service; custom providers
+  // receive the signed/public durable URLs through standard image_url parts.
+  let durableReferenceUrls: string[] = [];
+  if (references.length > 0) {
+    // Reference nodes already persist app-owned assets. Do not let this route
+    // mirror arbitrary caller-supplied URLs, which would expand its SSRF surface.
+    const appOrigin = req.nextUrl.origin;
+    const r2Origin = process.env.R2_PUBLIC_URL?.replace(/\/$/, "");
+    const appOwned = references.every((reference) => {
+      try {
+        const resolved = new URL(reference.url, appOrigin);
+        const relativeGenerated = reference.url.startsWith("/generated/");
+        const sameOriginGenerated = resolved.origin === appOrigin && resolved.pathname.startsWith("/generated/");
+        const r2Asset = !!r2Origin && (reference.url === r2Origin || reference.url.startsWith(`${r2Origin}/`));
+        return relativeGenerated || sameOriginGenerated || r2Asset;
+      } catch {
+        return false;
+      }
+    });
+    if (!appOwned) {
+      return new Response(JSON.stringify({ error: "Reference images must be uploaded to HeliosGen before AI analysis." }), {
+        status: 400, headers: { "Content-Type": "application/json" },
+      });
+    }
+    try {
+      durableReferenceUrls = await Promise.all(references.map((reference) => ensureR2(reference.url, "references")));
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Reference images could not be prepared." }), {
+        status: 502, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (isCustomModelId(model) && durableReferenceUrls.some((url) => !/^https:\/\//i.test(url))) {
+      return new Response(JSON.stringify({ error: "Custom vision models require CALLBACK_BASE_URL so reference images have public HTTPS URLs." }), {
+        status: 400, headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  const withReferenceContent = (sourceMessages: Message[], urls: string[]): Message[] => {
+    if (!references.length) return sourceMessages;
+    const promptText = sourceMessages.filter((message) => message.role === "user").map((message) => textContent(message.content)).join("\n\n");
+    const content: Array<TextContent | ImageContent> = [{ type: "text", text: promptText }];
+    references.forEach((reference, index) => {
+      content.push({
+        type: "text",
+        text: `Reference ${index + 1} — ${reference.name || `Image ${index + 1}`}\nUsage: ${reference.usageNote || "Use only as directed by the request."}`,
+      });
+      content.push({ type: "image_url", image_url: { url: urls[index] } });
+    });
+    const userIndex = sourceMessages.findIndex((message) => message.role === "user");
+    const next = sourceMessages.filter((message) => message.role !== "user");
+    next.splice(userIndex < 0 ? next.length : Math.min(userIndex, next.length), 0, { role: "user", content });
+    return next;
+  };
+
   // ── Custom OpenAI-compatible provider ─────────────────────────────────────
   if (isCustomModelId(model)) {
     let url: string;
@@ -108,7 +212,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       cache: "no-store",
       headers: customProviderHeaders(body.customProvider?.apiKey),
-      body: JSON.stringify({ model: customModelName(model), messages, stream: true }),
+      body: JSON.stringify({ model: customModelName(model), messages: withReferenceContent(messages, durableReferenceUrls), stream: true }),
       signal: req.signal,
     });
     if (!upstream.ok) {
@@ -116,12 +220,7 @@ export async function POST(req: NextRequest) {
         status: upstream.status, headers: { "Content-Type": "application/json" },
       });
     }
-    return new Response(upstream.body, {
-      headers: {
-        "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive", "X-Accel-Buffering": "no",
-      },
-    });
+    return streamingResponse(upstream.body);
   }
 
   // ── Azure Auto (model-router) ──────────────────────────────────────────────
@@ -178,14 +277,7 @@ export async function POST(req: NextRequest) {
         { status: upstream.status, headers: { "Content-Type": "application/json" } }
       );
     }
-    return new Response(upstream.body, {
-      headers: {
-        "Content-Type":      "text/event-stream",
-        "Cache-Control":     "no-cache, no-transform",
-        "Connection":        "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
+    return streamingResponse(upstream.body);
   }
 
   // ── Kie.ai models ─────────────────────────────────────────────────────────
@@ -200,28 +292,14 @@ export async function POST(req: NextRequest) {
   const openaiEndpoint = OPENAI_COMPAT_ENDPOINTS[model];
 
   if (references.length > 0) {
-    let durableUrls: string[];
-    let providerUrls: string[];
     try {
-      durableUrls = await Promise.all(references.map((reference) => ensureR2(reference.url, "references")));
-      providerUrls = GUEST_MODE ? await uploadReferenceImagesToKie(durableUrls, apiKey) : durableUrls;
+      const providerUrls = GUEST_MODE ? await uploadReferenceImagesToKie(durableReferenceUrls, apiKey) : durableReferenceUrls;
+      messages = withReferenceContent(messages, providerUrls);
     } catch (error) {
       return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Reference images could not be prepared." }), {
         status: 502, headers: { "Content-Type": "application/json" },
       });
     }
-    const promptText = messages.filter((message) => message.role === "user").map((message) => textContent(message.content)).join("\n\n");
-    const content: Array<TextContent | ImageContent> = [{ type: "text", text: promptText }];
-    references.forEach((reference, index) => {
-      content.push({
-        type: "text",
-        text: `Reference ${index + 1} — ${reference.name || `Image ${index + 1}`}\nUsage: ${reference.usageNote || "Use only as directed by the request."}`,
-      });
-      content.push({ type: "image_url", image_url: { url: providerUrls[index] } });
-    });
-    const userIndex = messages.findIndex((message) => message.role === "user");
-    messages = messages.filter((message) => message.role !== "user");
-    messages.splice(userIndex < 0 ? messages.length : Math.min(userIndex, messages.length), 0, { role: "user", content });
   }
 
   const claudeSystemPrompt = messages
@@ -273,12 +351,5 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return new Response(upstream.body, {
-    headers: {
-      "Content-Type":       "text/event-stream",
-      "Cache-Control":      "no-cache, no-transform",
-      "Connection":         "keep-alive",
-      "X-Accel-Buffering":  "no",
-    },
-  });
+  return streamingResponse(upstream.body);
 }

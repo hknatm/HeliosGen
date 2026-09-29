@@ -36,18 +36,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let payload: { data?: Array<{ id?: unknown }> };
+    let payload: {
+      data?: Array<{
+        id?: unknown;
+        vision?: unknown;
+        capabilities?: unknown;
+        input_modalities?: unknown;
+        architecture?: unknown;
+      }>;
+    };
     try {
-      payload = JSON.parse(raw) as { data?: Array<{ id?: unknown }> };
+      payload = JSON.parse(raw) as typeof payload;
     } catch {
       return NextResponse.json({ error: "Provider returned invalid JSON from /models." }, { status: 502 });
     }
 
-    const models = Array.from(new Set(
+    const models = Array.from(new Map(
       (payload.data ?? [])
-        .map((model) => model.id)
-        .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
-    )).sort((a, b) => a.localeCompare(b));
+        .map((model) => {
+          const id = typeof model.id === "string" ? model.id.trim() : "";
+          if (!id) return null;
+          const capabilities = model.capabilities && typeof model.capabilities === "object"
+            ? model.capabilities as Record<string, unknown>
+            : undefined;
+          const architecture = model.architecture && typeof model.architecture === "object"
+            ? model.architecture as Record<string, unknown>
+            : undefined;
+          const modalities = Array.isArray(model.input_modalities)
+            ? model.input_modalities
+            : Array.isArray(capabilities?.input_modalities)
+              ? capabilities.input_modalities
+              : Array.isArray(capabilities?.modalities)
+                ? capabilities.modalities
+                : Array.isArray(architecture?.input_modalities)
+                  ? architecture.input_modalities
+                  : [];
+          const vision = model.vision === true || capabilities?.vision === true || capabilities?.supports_vision === true ||
+            modalities.some((item) => typeof item === "string" && /image|vision/i.test(item));
+          return [id, { id, ...(vision ? { vision: true } : {}) }] as const;
+        })
+        .filter((entry): entry is readonly [string, { id: string; vision?: boolean }] => entry !== null),
+    ).values()).sort((a, b) => a.id.localeCompare(b.id));
 
     return NextResponse.json({ models });
   } catch (error) {

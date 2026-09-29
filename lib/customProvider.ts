@@ -10,6 +10,8 @@
 export interface CustomProviderRequestConfig {
   baseUrl?: string;
   apiKey?: string;
+  /** Explicit capability opt-in; model names are not reliable capability metadata. */
+  vision?: boolean;
 }
 
 /* ─── Backend-facing helpers ───────────────────────────────────────────────── */
@@ -69,6 +71,10 @@ export interface CustomProviderModel {
   name: string;
   /** Whether the model is enabled for use in chat/assistant surfaces. */
   enabled: boolean;
+  /** User-confirmed support for OpenAI-compatible image_url message parts. */
+  vision: boolean;
+  /** Provider URL for which the capability was confirmed. */
+  providerBaseUrl: string;
 }
 
 const CONFIG_KEY = "aiui-custom-provider-config";
@@ -116,6 +122,8 @@ export function loadCustomProviderModels(): CustomProviderModel[] {
         // Existing models default to enabled. Legacy chat/image fields are
         // dropped — they were dead classification data.
         enabled: m.enabled === undefined ? true : m.enabled === true,
+        vision: m.vision === true,
+        providerBaseUrl: typeof m.providerBaseUrl === "string" ? m.providerBaseUrl.trim().replace(/\/+$/, "") : "",
       }));
   } catch {
     return [];
@@ -142,6 +150,22 @@ export function setCustomProviderModelEnabled(id: string, enabled: boolean) {
   saveCustomProviderModels(models);
 }
 
+export function setCustomProviderModelVision(id: string, vision: boolean) {
+  const models = loadCustomProviderModels();
+  const idx = models.findIndex((m) => m.id === id);
+  if (idx === -1) return;
+  const providerBaseUrl = loadCustomProviderConfig().baseUrl.trim().replace(/\/+$/, "");
+  models[idx] = { ...models[idx], vision, providerBaseUrl };
+  saveCustomProviderModels(models);
+}
+
+export function customModelSupportsVision(model: string): boolean {
+  if (!isCustomModelId(model)) return false;
+  const configuredBaseUrl = loadCustomProviderConfig().baseUrl.trim().replace(/\/+$/, "");
+  const configuredModel = getCustomProviderModel(customModelName(model));
+  return configuredModel?.vision === true && !!configuredBaseUrl && configuredModel.providerBaseUrl === configuredBaseUrl;
+}
+
 export function clearCustomProviderModels() {
   try {
     localStorage.removeItem(MODELS_KEY);
@@ -150,8 +174,14 @@ export function clearCustomProviderModels() {
 }
 
 /** Response shape expected from the /api/custom-provider/models route. */
+export interface CustomProviderModelDescriptor {
+  id: string;
+  /** Optional capability advertised by an OpenAI-compatible /models response. */
+  vision?: boolean;
+}
+
 export interface CustomProviderModelsResponse {
-  models: string[];
+  models: Array<string | CustomProviderModelDescriptor>;
 }
 
 /**
@@ -177,12 +207,29 @@ export async function syncCustomProviderModels(
   }
 
   const data = (await res.json()) as CustomProviderModelsResponse;
-  const models = Array.isArray(data?.models) ? data.models : [];
-  // Preserve the enabled state of unchanged ids across a re-sync.
-  const existing = new Map(loadCustomProviderModels().map((m) => [m.id, m.enabled]));
-  return models.map((id) => ({
-    id,
-    name: id,
-    enabled: existing.get(id) ?? true,
-  }));
+  const models = Array.isArray(data?.models)
+    ? data.models
+      .map((model): CustomProviderModelDescriptor | null => {
+        if (typeof model === "string" && model.trim()) return { id: model.trim() };
+        if (!model || typeof model !== "object" || typeof model.id !== "string" || !model.id.trim()) return null;
+        return { id: model.id.trim(), vision: model.vision === true };
+      })
+      .filter((model): model is CustomProviderModelDescriptor => model !== null)
+    : [];
+  // Preserve the enabled state and explicit capability of unchanged ids across
+  // a re-sync. Provider-advertised vision is also accepted, because many
+  // OpenAI-compatible /models endpoints expose input_modalities/capabilities.
+  const providerBaseUrl = config.baseUrl.trim().replace(/\/+$/, "");
+  const existing = new Map(loadCustomProviderModels().map((m) => [m.id, m]));
+  return models.map((descriptor) => {
+    const previous = existing.get(descriptor.id);
+    const sameProvider = previous?.providerBaseUrl === providerBaseUrl;
+    return {
+      id: descriptor.id,
+      name: descriptor.id,
+      enabled: previous?.enabled ?? true,
+      vision: descriptor.vision === true || (sameProvider && previous?.vision === true),
+      providerBaseUrl,
+    };
+  });
 }

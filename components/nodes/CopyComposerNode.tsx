@@ -158,31 +158,6 @@ export default function CopyComposerNode({ id, data, selected }: NodeProps<CopyC
     return () => document.removeEventListener("mousedown", handler);
   }, [modelOpen]);
 
-  // Internal scroll must not pan the canvas. Mirror PromptComposerNode: stop
-  // wheel propagation only when the wheel target sits inside a scrollable region.
-  useEffect(() => {
-    const card = cardRef.current;
-    if (!card) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      let el = event.target as HTMLElement | null;
-      while (el && el !== card) {
-        const style = getComputedStyle(el);
-        if (
-          (style.overflowY === "auto" || style.overflowY === "scroll") &&
-          el.scrollHeight > el.clientHeight
-        ) {
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          return;
-        }
-        el = el.parentElement;
-      }
-    };
-    card.addEventListener("wheel", onWheel, { passive: true });
-    return () => card.removeEventListener("wheel", onWheel);
-  }, []);
-
   const handleProcessAI = useCallback(async () => {
     if (busy || readOnly || !hasRaw) return;
     const seq = ++requestSeqRef.current;
