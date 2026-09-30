@@ -6,6 +6,7 @@ import GenerateButton from "@/components/nodes/GenerateButton";
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import NodeActionBar from "./NodeActionBar";
+import NodeStatusBadge from "./NodeStatusBadge";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { resolveInputs } from "@/lib/executor";
@@ -859,6 +860,7 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
         </div>
       )}
       <span className="node-above-label">{data.label as string}</span>
+      <NodeStatusBadge status={isQueued ? "idle" : status} className="absolute -top-[22px] right-0" />
       {(!promptConnected || hasFailedImageInput) && status !== "running" && !data.locked && (
         <MissingInputWarning messages={[
           ...(!promptConnected ? ["A text node is required"] : []),

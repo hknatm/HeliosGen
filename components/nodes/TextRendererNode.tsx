@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
+import TypedHandle from "./TypedHandle";
+import NodeStatusBadge from "./NodeStatusBadge";
 import MissingInputWarning from "./MissingInputWarning";
 import { NodeData, TextContent, useWorkflowStore } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
@@ -403,6 +405,7 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
     <div ref={cardRef} className={`node-card node-data-card w-full h-full flex flex-col${busy || isRendering ? " node-generating" : ""}`} style={{ minWidth: 340, overflow: "visible" }}>
       <CornerResizer minWidth={320} minHeight={360} />
       <span className="node-above-label">{data.label as string}</span>
+      <NodeStatusBadge status={data.status as string | undefined} className="absolute -top-[22px] right-0" />
       {missingMessages.length > 0 && <MissingInputWarning messages={missingMessages} />}
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 9, height: "100%", minHeight: 0 }}>
         {/* Header */}
@@ -589,14 +592,11 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
         {!ready && <span id={`text-overlay-render-help-${id}`} className="sr-only">{missingMessages.join("; ")}</span>}
         {data.status === "error" && !staleNote && <div role="status" aria-live="polite" style={{ color: "#fca5a5", fontSize: 10 }}>{String(data.errorMsg ?? "").slice(0, 140)}</div>}
       </div>
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(18% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>IMAGE</span>
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(31% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>STYLE</span>
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(44% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>CONTEXT</span>
-      <Handle type="target" position={Position.Left} id="image" title="Required: generated, uploaded, or rendered image" style={{ top: "18%", background: "#fb923c", border: "2px solid #171923", width: 10, height: 10 }} />
-      <Handle type="target" position={Position.Left} id="style" title="Required: Image Style Profile reserved text area" style={{ top: "31%", background: "#38bdf8", border: "2px solid #171923", width: 10, height: 10 }} />
-      <Handle type="target" position={Position.Left} id="variables" title="Optional: Variables or Brand Context for AI copy refinement" style={{ top: "44%", background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }} />
+      <TypedHandle id="image" kind="images" side="left" top={18} label="IMAGE" title="Required: generated, uploaded, or rendered image" connected={edges.some((edge) => edge.target === id && edge.targetHandle === "image")} />
+      <TypedHandle id="style" kind="context" side="left" top={31} label="STYLE" title="Required: Image Style Profile reserved text area" connected={edges.some((edge) => edge.target === id && edge.targetHandle === "style")} />
+      <TypedHandle id="variables" kind="context" side="left" top={44} title="Optional: Variables or Brand Context for AI copy refinement" connected={edges.some((edge) => edge.target === id && edge.targetHandle === "variables")} />
       {edges.some((edge) => edge.target === id && edge.targetHandle === "text") && (
-        <Handle type="target" position={Position.Left} id="text" title="Legacy Text Content input" className="node-handle-icon-text-input" style={{ top: "50%", background: "#f59e0b", border: "2px solid #171923", width: 10, height: 10 }} />
+        <TypedHandle id="text" kind="prompt" side="left" top={50} label="TEXT" title="Legacy Text Content input" connected />
       )}
       <Handle type="source" position={Position.Right} id="imageOut" className="node-handle-icon node-handle-icon-out-image" title="Rendered image output" style={{ background: "#f97316", border: "2px solid #171923", width: 10, height: 10 }} />
     </div>

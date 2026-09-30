@@ -6,6 +6,7 @@ import GenerateButton from "@/components/nodes/GenerateButton";
 import { Handle, Position, NodeProps, Node, useUpdateNodeInternals } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import NodeActionBar from "./NodeActionBar";
+import NodeStatusBadge from "./NodeStatusBadge";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { resolveInputs } from "@/lib/executor";
 import { createClient } from "@/lib/supabase/client";
@@ -1197,6 +1198,7 @@ export default function VideoGeneratorNode({ id, data, selected }: NodeProps<Vid
         <VideoNodeIcon />
         {data.label as string}
       </span>
+      <NodeStatusBadge status={isQueued ? "idle" : status} className="absolute -top-[22px] right-0" />
       {(!connectedHandles.has("prompt") && !cfg.promptOptional || hasFailedMediaInput) && status !== "running" && !data.locked && (
         <MissingInputWarning messages={[
           ...(!connectedHandles.has("prompt") && !cfg.promptOptional ? ["A text node is required"] : []),
