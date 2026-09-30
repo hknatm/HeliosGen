@@ -19,7 +19,17 @@ function callbackMessage(value: unknown, fallback: string): string {
 
 export const maxDuration = 180;
 
+/** Task IDs currently being settled in this process, so concurrent duplicates cannot mirror and persist twice. */
+const settling = new Set<string>();
+const FAILURE_STATES = new Set(["fail", "failed", "error", "canceled", "cancelled", "expired", "timeout", "timed_out"]);
+
 export async function POST(req: NextRequest) {
+  const response = await handle(req);
+  return response;
+}
+
+
+async function handle(req: NextRequest): Promise<NextResponse> {
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
   const callbackSecret = req.headers.get("x-callback-token") ?? bearer ?? req.nextUrl.searchParams.get("token");
   if (!callbackSecretConfigured()) {
@@ -84,6 +94,28 @@ export async function POST(req: NextRequest) {
     console.warn("[callback] rejected unknown or settled task:", taskId);
     return NextResponse.json({ error: "Unknown or settled task" }, { status: 404 });
   }
+  const terminal = state === "success" || FAILURE_STATES.has(state) || (callbackBody.code !== undefined && callbackBody.code !== 200);
+  if (terminal) {
+    if (settling.has(taskId)) {
+      console.warn("[callback] duplicate in-flight callback ignored:", taskId);
+      return NextResponse.json({ received: true });
+    }
+    settling.add(taskId);
+  }
+  try {
+    return await settleCallback(taskId, state, existingJob, data, callbackBody);
+  } finally {
+    settling.delete(taskId);
+  }
+}
+
+async function settleCallback(
+  taskId: string,
+  state: string,
+  existingJob: { status: "pending"; type?: "image" | "video"; userId?: string },
+  data: { failMsg?: unknown; error?: unknown; resultJson?: unknown; videoUrl?: unknown; output?: unknown; [key: string]: unknown },
+  callbackBody: { code?: unknown; msg?: string },
+): Promise<NextResponse> {
   console.log("[callback] taskId:", taskId, "state:", state);
 
   // Treat a non-200 top-level code as a hard error (e.g. Veo 500 responses that
@@ -111,7 +143,7 @@ export async function POST(req: NextRequest) {
       const folder = isVideo ? "videos" : "images";
       let storedUrls: string[];
       try {
-        storedUrls = await Promise.all(kieUrls.map((url) => mirrorToR2(url, folder)));
+        storedUrls = await Promise.all(kieUrls.map((url) => mirrorToR2(url, folder, { publicOnly: true })));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const displayError = "Generation completed, but the result could not be saved. Please try again.";
@@ -162,7 +194,7 @@ export async function POST(req: NextRequest) {
         await supabaseAdmin.from("generations").update({ status: "error", error_msg: error }).eq("task_id", taskId);
       }
     }
-  } else if (state === "fail" || state === "failed" || state === "error") {
+  } else if (FAILURE_STATES.has(state)) {
     const error = callbackMessage(data.failMsg ?? data.error ?? callbackBody.msg, "Generation failed");
     settle(taskId, { status: "error", error });
 

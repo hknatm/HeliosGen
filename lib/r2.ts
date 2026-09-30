@@ -80,11 +80,12 @@ export async function uploadBuffer(
 }
 
 /** Fetch a remote URL, upload to R2 (or local disk in guest mode), return URL. */
-export async function mirrorToR2(sourceUrl: string, folder: string): Promise<string> {
-  if (GUEST_MODE) return localStore.mirrorToStorage(sourceUrl, folder);
+export async function mirrorToR2(sourceUrl: string, folder: string, options: { publicOnly?: boolean } = {}): Promise<string> {
+  if (GUEST_MODE) return localStore.mirrorToStorage(sourceUrl, folder, options);
   const { buffer, contentType } = await fetchRemoteMedia(sourceUrl, {
     maxBytes: folder === "videos" ? 200 * 1024 * 1024 : 30 * 1024 * 1024,
     totalTimeoutMs: folder === "videos" ? 180_000 : 120_000,
+    publicOnly: options.publicOnly,
   });
   return uploadBuffer(buffer, contentType, folder);
 }

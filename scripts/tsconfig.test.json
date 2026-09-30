@@ -59,6 +59,7 @@
     "test-node-dimensions.ts",
     "test-vision.ts",
     "test-listing.ts",
+    "test-remote-media.ts",
     "test-render-e2e.ts"
   ]
 }
