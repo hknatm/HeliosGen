@@ -198,7 +198,10 @@ body,
 @media (max-width: 640px) {
   .settings-grid-two, .theme-options { grid-template-columns: 1fr; }
   #settings-modal { width: calc(100vw - 16px) !important; height: calc(100dvh - 16px) !important; border-radius: 12px !important; }
-  #settings-modal > div:first-child { width: 112px !important; padding: 12px 6px !important; }
+  #settings-modal > div:first-child { width: 128px !important; padding: 12px 6px !important; }
+  #settings-modal > div:first-child input[type="search"] { padding: 6px 7px !important; font-size: 11px !important; }
+  #settings-modal > div:first-child [role="group"] > div:first-child { padding-inline: 7px !important; }
+  #settings-modal > div:last-child > div:first-child .settings-description { display: none; }
   #settings-modal > div:first-child button { padding-inline: 7px !important; font-size: 11px !important; }
   #settings-modal > div:last-child > div:last-child { padding: 16px !important; }
   .empty-canvas-actions { flex-direction: column; gap: 8px; }

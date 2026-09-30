@@ -213,6 +213,39 @@ const DEBUG_NAV_ITEM: { id: NavId; label: string; icon: React.ReactNode } = {
 
 const NAV = IS_DEBUG ? [...NAV_BASE, DEBUG_NAV_ITEM] : NAV_BASE;
 
+/** Sidebar grouping and per-page descriptions. Panels themselves are unchanged. */
+const NAV_GROUPS: Array<{ label: string; ids: NavId[] }> = [
+  { label: "General", ids: ["appearance", "text-rendering"] },
+  { label: "Providers", ids: ["api-keys", "custom-provider"] },
+  { label: "Models", ids: ["image-models", "video-models", "text-models"] },
+  { label: "Prompts", ids: ["text-prompts"] },
+  { label: "Advanced", ids: ["debug"] },
+];
+
+const NAV_DESCRIPTIONS: Record<NavId, string> = {
+  appearance: "Theme and display preferences.",
+  "text-rendering": "Fonts and defaults for deterministic text overlays.",
+  "api-keys": "Connect Kie.ai, Azure and Codex. Keys stay on the server.",
+  "custom-provider": "OpenAI-compatible endpoint, its models and Vision capability.",
+  "image-models": "Choose which provider serves each image model.",
+  "video-models": "Choose which provider serves each video model.",
+  "text-models": "Text and Vision model routing for AI nodes.",
+  "text-prompts": "Default system prompt and named presets for AI Agent and Vision nodes.",
+  debug: "Developer diagnostics.",
+};
+
+const NAV_KEYWORDS: Record<NavId, string> = {
+  appearance: "theme dark light colour color",
+  "text-rendering": "font typography overlay",
+  "api-keys": "kie azure codex key token secret login",
+  "custom-provider": "proxy openai compatible vision endpoint base url",
+  "image-models": "image generation nano banana gpt provider",
+  "video-models": "video veo kling seedance provider",
+  "text-models": "llm claude gpt agent chat vision",
+  "text-prompts": "system prompt preset library tags",
+  debug: "developer logs",
+};
+
 /* ─── Props ─────────────────────────────────────────────────────────────────── */
 
 interface SettingsModalProps {
@@ -1865,6 +1898,8 @@ function DebugPanel() {
 
 export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [activeNav, setActiveNav]             = useState<NavId>("appearance");
+  const [navQuery, setNavQuery]               = useState("");
+  const [customConfigured, setCustomConfigured] = useState(() => !!loadCustomProviderConfig().baseUrl.trim());
   const [modelProviders, setModelProviders]   = useState<Record<string, ProviderId>>({});
   const [azureDeployments, setAzureDeployments] = useState<Record<string, string>>({});
   const [azureBaseUrl, setAzureBaseUrl]               = useState("");
@@ -1894,6 +1929,12 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         setCodexStatus(d.ready ? { kind: "ready" } : { kind: "not_ready", installed: d.installed, authFound: d.authFound })
       )
       .catch(() => setCodexStatus({ kind: "not_ready", installed: false, authFound: false }));
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setCustomConfigured(!!loadCustomProviderConfig().baseUrl.trim());
+    window.addEventListener("aiui-custom-provider-config-changed", refresh);
+    return () => window.removeEventListener("aiui-custom-provider-config-changed", refresh);
   }, []);
 
   /* Load persisted data on mount */
@@ -2063,8 +2104,8 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           top: "50%",
           transform: "translate(-50%, -50%)",
           zIndex: 10000,
-          width: "min(75vw, 960px)",
-          height: "min(75vh, 680px)",
+          width: "min(92vw, 1080px)",
+          height: "min(84vh, 760px)",
           display: "flex",
           borderRadius: "18px",
           background: "rgba(10, 11, 14, 0.98)",
@@ -2077,7 +2118,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
         {/* ── Left sidebar ── */}
         <div
           style={{
-            width: "200px",
+            width: "224px",
             flexShrink: 0,
             borderRight: "1px solid rgba(255,255,255,0.06)",
             display: "flex",
@@ -2099,49 +2140,100 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             Settings
           </div>
 
-          {/* Nav items */}
-          {NAV.map((item) => {
-            const isActive = activeNav === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`settings-nav-${item.id}`}
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => setActiveNav(item.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "9px",
-                  padding: "8px 10px",
-                  borderRadius: "8px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: isActive ? "rgba(255,255,255,0.07)" : "transparent",
-                  color: isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 500 : 400,
-                  textAlign: "left",
-                  transition: "background 130ms ease, color 130ms ease",
-                  width: "100%",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)";
-                    (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.6)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                    (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.4)";
-                  }
-                }}
-              >
-                <span style={{ opacity: isActive ? 1 : 0.6, flexShrink: 0 }}>{item.icon}</span>
-                {item.label}
-              </button>
-            );
-          })}
+          {/* Search */}
+          <label style={{ display: "block", padding: "0 4px 10px" }}>
+            <span className="sr-only">Search settings</span>
+            <input
+              type="search"
+              value={navQuery}
+              onChange={(e) => setNavQuery(e.target.value)}
+              placeholder="Search settings…"
+              aria-label="Search settings"
+              className="settings-input"
+              style={{ padding: "7px 10px", fontSize: 12 }}
+            />
+          </label>
+
+          {/* Grouped nav */}
+          <nav aria-label="Settings sections" style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", minHeight: 0 }}>
+            {(() => {
+              const q = navQuery.trim().toLowerCase();
+              const groups = NAV_GROUPS.map((group) => {
+                const items = group.ids
+                  .map((gid) => NAV.find((item) => item.id === gid))
+                  .filter((item): item is (typeof NAV)[number] => !!item)
+                  .filter((item) => !q || `${item.label} ${NAV_KEYWORDS[item.id]} ${NAV_DESCRIPTIONS[item.id]}`.toLowerCase().includes(q));
+                return { group, items };
+              }).filter(({ items }) => items.length > 0);
+              const shown = groups.reduce((total, { items }) => total + items.length, 0);
+              return (
+                <>
+                  {groups.map(({ group, items }) => (
+                    <div key={group.label} role="group" aria-label={group.label} style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
+                      <div style={{ padding: "6px 10px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ui-text-faint)" }}>{group.label}</div>
+                      {items.map((item) => {
+                        const isActive = activeNav === item.id;
+                        const status =
+                          item.id === "api-keys" ? (kieKeyStatus === "set" ? "ok" : kieKeyStatus === "unset" ? "warn" : null)
+                          : item.id === "custom-provider" ? (customConfigured ? "ok" : null)
+                          : null;
+                        return (
+                          <button
+                            key={item.id}
+                            id={`settings-nav-${item.id}`}
+                            aria-current={isActive ? "page" : undefined}
+                            onClick={() => setActiveNav(item.id)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "9px",
+                              padding: "8px 10px",
+                              borderRadius: "8px",
+                              border: "none",
+                              cursor: "pointer",
+                              background: isActive ? "rgba(255,255,255,0.07)" : "transparent",
+                              color: isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+                              fontSize: "13px",
+                              fontWeight: isActive ? 500 : 400,
+                              textAlign: "left",
+                              transition: "background 130ms ease, color 130ms ease",
+                              width: "100%",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isActive) {
+                                (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)";
+                                (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.6)";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isActive) {
+                                (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                                (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.4)";
+                              }
+                            }}
+                          >
+                            <span style={{ opacity: isActive ? 1 : 0.6, flexShrink: 0 }}>{item.icon}</span>
+                            <span style={{ flex: 1, minWidth: 0 }}>{item.label}</span>
+                            {status && (
+                              <span
+                                role="img"
+                                aria-label={status === "ok" ? "Configured" : "Not configured"}
+                                title={status === "ok" ? "Configured" : "Not configured"}
+                                style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: status === "ok" ? "#34d399" : "#f59e0b" }}
+                              />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  {shown === 0 && (
+                    <p role="status" className="settings-description" style={{ padding: "6px 10px" }}>No settings match “{navQuery}”.</p>
+                  )}
+                </>
+              );
+            })()}
+          </nav>
         </div>
 
         {/* ── Right content ── */}
@@ -2159,12 +2251,17 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "flex-end",
-              padding: "16px 20px",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "14px 20px",
               borderBottom: "1px solid rgba(255,255,255,0.05)",
               flexShrink: 0,
             }}
           >
+            <div style={{ minWidth: 0 }}>
+              <h2 className="settings-heading" style={{ fontSize: 15 }}>{NAV.find((item) => item.id === activeNav)?.label}</h2>
+              <p className="settings-description" style={{ margin: "2px 0 0" }}>{NAV_DESCRIPTIONS[activeNav]}</p>
+            </div>
             <button
               id="settings-close"
               ref={closeRef}
