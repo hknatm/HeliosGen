@@ -119,5 +119,18 @@ export function usePipelineRunner(scopeNodeIds?: string[]) {
     return () => clearTimeout(timer);
   }, [nodes, pipeline, updateNodeData]);
 
-  return { run, isRunning, genNodeCount };
+  /** Stops advancing the pipeline and clears queued triggers. Nodes already running keep their own Stop control. */
+  const cancel = useCallback(() => {
+    const { nodes: current } = useWorkflowStore.getState();
+    const scope = scopeRef.current;
+    for (const node of scope ? current.filter((n) => scope.includes(n.id)) : current) {
+      if (node.data.pendingGenerate || node.data.pendingRender || node.data.pipelineQueued) {
+        updateNodeData(node.id, { pendingGenerate: false, pendingRender: false, pipelineQueued: false });
+      }
+    }
+    waveEverActive.current = false;
+    setPipeline(null);
+  }, [updateNodeData]);
+
+  return { run, cancel, isRunning, genNodeCount };
 }

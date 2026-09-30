@@ -180,7 +180,7 @@ export default function GroupNode({ id, data, selected }: NodeProps<GroupNodeTyp
   const label  = data.label   as string;
 
   const memberIds = (data.memberIds as string[] | undefined) ?? [];
-  const { run: runPipeline, isRunning: pipelineRunning, genNodeCount } = usePipelineRunner(memberIds);
+  const { run: runPipeline, cancel: cancelPipeline, isRunning: pipelineRunning, genNodeCount } = usePipelineRunner(memberIds);
   const [isDownloading, setIsDownloading] = useState(false);
   const [runDropdownOpen, setRunDropdownOpen] = useState(false);
   const runDropdownRef = useRef<HTMLDivElement>(null);
@@ -681,11 +681,12 @@ export default function GroupNode({ id, data, selected }: NodeProps<GroupNodeTyp
                 {/* Run part */}
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); runPipeline(); }}
-                  title={readyJobCount === 0 ? "No ready generation nodes in group" : `Run ${readyJobCount} generation node${readyJobCount === 1 ? "" : "s"}`}
-                  disabled={readyJobCount === 0 || pipelineRunning}
+                  onClick={(e) => { e.stopPropagation(); if (pipelineRunning) cancelPipeline(); else runPipeline(); }}
+                  title={pipelineRunning ? "Stop the queue (running nodes keep their own Stop)" : readyJobCount === 0 ? "No ready generation nodes in group" : `Run ${readyJobCount} generation node${readyJobCount === 1 ? "" : "s"}`}
+                  aria-label={pipelineRunning ? "Stop queued runs" : "Run group"}
+                  disabled={readyJobCount === 0 && !pipelineRunning}
                   className="flex items-center gap-1.5 pl-2.5 pr-2 h-full"
-                  style={{ cursor: readyJobCount === 0 || pipelineRunning ? "not-allowed" : "pointer" }}
+                  style={{ cursor: readyJobCount === 0 && !pipelineRunning ? "not-allowed" : "pointer" }}
                 >
                   {pipelineRunning ? (
                     <svg width="9" height="9" viewBox="0 0 10 10" fill="none" style={{ animation: "spin 0.9s linear infinite", flexShrink: 0 }}>
@@ -697,7 +698,7 @@ export default function GroupNode({ id, data, selected }: NodeProps<GroupNodeTyp
                       <path d="M2 1.5 L9 5 L2 8.5 Z" />
                     </svg>
                   )}
-                  <span className="text-[11px] font-medium leading-none tracking-wide">Run</span>
+                  <span className="text-[11px] font-medium leading-none tracking-wide">{pipelineRunning ? "Stop" : "Run"}</span>
                   {readyJobCount > 0 && (
                     <span
                       className="text-[10px] font-semibold leading-none rounded-full px-1.5 py-0.5"

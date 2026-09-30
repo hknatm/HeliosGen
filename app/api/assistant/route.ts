@@ -80,19 +80,77 @@ const OPENAI_COMPAT_ENDPOINTS: Record<string, string> = {
 
 const AZURE_API_VERSION = "2024-04-01-preview";
 
-export async function POST(req: NextRequest) {
-  const body = (await req.json()) as {
-    messages?: Message[];
-    prompt?: string;
-    systemPrompt?: string;
-    model?: string;
-    azureEndpoint?: string;
-    azureDeployment?: string;
-    azureModelName?: string;
-    customProvider?: { baseUrl?: string; apiKey?: string; vision?: boolean };
-    references?: ReferenceImage[];
-  };
+interface AssistantBody {
+  messages?: Message[];
+  prompt?: string;
+  systemPrompt?: string;
+  model?: string;
+  azureEndpoint?: string;
+  azureDeployment?: string;
+  azureModelName?: string;
+  customProvider?: { baseUrl?: string; apiKey?: string; vision?: boolean };
+  references?: ReferenceImage[];
+}
 
+function sseError(message: string): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify({ type: "error", error: { message } })}\n\n`);
+}
+
+/**
+ * Requests with reference images do slow work before the provider answers (asset
+ * preparation, temporary uploads, time to first byte). Reverse proxies answer 504 when
+ * nothing is sent for that long, so open the event stream immediately, keep it alive, and
+ * report any failure as an in-stream error event. Text-only requests keep plain HTTP errors.
+ */
+export async function POST(req: NextRequest) {
+  const body = (await req.json()) as AssistantBody;
+  if (!Array.isArray(body.references) || body.references.length === 0) return handle(req, body);
+
+  const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let closed = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const stop = () => { closed = true; if (timer) clearInterval(timer); };
+      timer = setInterval(() => { if (!closed) controller.enqueue(encoder.encode(": keepalive\n\n")); }, 10_000);
+      controller.enqueue(encoder.encode(": preparing\n\n"));
+      void (async () => {
+        try {
+          const response = await handle(req, body);
+          const isStream = response.ok && (response.headers.get("content-type") ?? "").includes("text/event-stream");
+          if (!isStream || !response.body) {
+            let message = "The assistant request failed.";
+            try { const j = JSON.parse(await response.text()); message = j.error ?? message; } catch { /* keep default */ }
+            controller.enqueue(sseError(typeof message === "string" ? message : JSON.stringify(message)));
+          } else {
+            const reader = response.body.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (!closed) controller.enqueue(value);
+            }
+          }
+        } catch (error) {
+          if (!closed) controller.enqueue(sseError(error instanceof Error ? error.message : "The assistant request failed."));
+        } finally {
+          stop();
+          try { controller.close(); } catch { /* already closed */ }
+        }
+      })();
+    },
+    cancel() { closed = true; if (timer) clearInterval(timer); },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+async function handle(req: NextRequest, body: AssistantBody): Promise<Response> {
   const model = body.model ?? "claude-sonnet-4-6";
   if (Array.isArray(body.references) && body.references.length > MAX_AGENT_REFERENCES) {
     return new Response(JSON.stringify({ error: `A maximum of ${MAX_AGENT_REFERENCES} reference images is supported.` }), {
