@@ -738,6 +738,20 @@ html[data-theme="light"] .multi-reference-order { background: #7c2d12; color: #f
   transition-delay: 0ms !important;
 }
 
+/* ── Connection drag feedback: driven by the real isValidConnection rules ── */
+.react-flow[data-connecting-type] .react-flow__handle[data-connect-valid="false"] {
+  opacity: 0.18 !important;
+  filter: grayscale(1);
+  transition: opacity 120ms ease;
+}
+.react-flow[data-connecting-type] .react-flow__handle[data-connect-valid="true"] {
+  opacity: 1 !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ring) 35%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow[data-connecting-type] .react-flow__handle[data-connect-valid] { transition: none; }
+}
+
 /* ── Duration slider ─────────────────────────────────────────────────────── */
 .dur-slider {
   -webkit-appearance: none;

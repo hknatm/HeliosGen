@@ -1259,10 +1259,24 @@ export default function WorkflowCanvas() {
   );
 
   // Tag the ReactFlow container with the output handle type so CSS can filter compatible inputs
-  const onConnectStart = useCallback((event: MouseEvent | TouchEvent) => {
+  const onConnectStart = useCallback((event: MouseEvent | TouchEvent, params?: { nodeId: string | null; handleId: string | null; handleType: "source" | "target" | null }) => {
     const handle = (event.target as HTMLElement)?.closest?.(".react-flow__handle") as HTMLElement | null;
     const rf = (event.target as HTMLElement)?.closest?.(".react-flow") as HTMLElement | null;
     if (!handle || !rf) return;
+    // Mark every handle that cannot accept this drag, using the real validation rules.
+    if (params?.nodeId && params.handleType) {
+      const fromSource = params.handleType === "source";
+      rf.querySelectorAll<HTMLElement>(".react-flow__handle").forEach((el) => {
+        const otherNode = el.dataset.nodeid;
+        const isTarget = el.classList.contains("target");
+        if (!otherNode || (fromSource ? !isTarget : el.classList.contains("target"))) return;
+        const otherHandle = el.dataset.handleid ?? null;
+        const ok = isValidConnection(fromSource
+          ? { source: params.nodeId!, sourceHandle: params.handleId, target: otherNode, targetHandle: otherHandle }
+          : { source: otherNode, sourceHandle: otherHandle, target: params.nodeId!, targetHandle: params.handleId });
+        el.setAttribute("data-connect-valid", ok ? "true" : "false");
+      });
+    }
     let type = "unknown";
     if (handle.classList.contains("node-handle-icon-out-text")) type = "prompt";
     else if (handle.classList.contains("node-handle-icon-out-image")) type = "image";
@@ -1275,7 +1289,7 @@ export default function WorkflowCanvas() {
     setConnectingHandleType(type);
     setIsConnecting(true);
     handle.classList.add("node-handle-connecting");
-  }, [setConnectingHandleType]);
+  }, [setConnectingHandleType, isValidConnection]);
 
   // Show node-picker when an edge is dragged and released on empty canvas
   const onConnectEnd = useCallback(
@@ -1285,9 +1299,10 @@ export default function WorkflowCanvas() {
       connectionState: any,
     ) => {
       // Remove connecting-type tag and handle highlight
-      const rf = (event.target as HTMLElement)?.closest?.(".react-flow") as HTMLElement | null;
+      const rf = ((event.target as HTMLElement)?.closest?.(".react-flow") ?? document.querySelector(".react-flow")) as HTMLElement | null;
       rf?.removeAttribute("data-connecting-type");
       document.querySelectorAll(".node-handle-connecting").forEach((el) => el.classList.remove("node-handle-connecting"));
+      document.querySelectorAll("[data-connect-valid]").forEach((el) => el.removeAttribute("data-connect-valid"));
       setConnectingHandleType(null);
       setIsConnecting(false);
 
