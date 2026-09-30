@@ -1900,11 +1900,11 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const [activeNav, setActiveNav]             = useState<NavId>("appearance");
   const [navQuery, setNavQuery]               = useState("");
   const [customConfigured, setCustomConfigured] = useState(() => !!loadCustomProviderConfig().baseUrl.trim());
-  const [modelProviders, setModelProviders]   = useState<Record<string, ProviderId>>({});
-  const [azureDeployments, setAzureDeployments] = useState<Record<string, string>>({});
-  const [azureBaseUrl, setAzureBaseUrl]               = useState("");
-  const [azureTextDeployment, setAzureTextDeployment] = useState("auto-model");
-  const [azureTextModelName, setAzureTextModelName]   = useState("model-router");
+  const [modelProviders, setModelProviders]   = useState<Record<string, ProviderId>>(() => loadModelProviders());
+  const [azureDeployments, setAzureDeployments] = useState<Record<string, string>>(() => loadAzureEndpoints());
+  const [azureBaseUrl, setAzureBaseUrl]               = useState(() => loadAzureBaseUrl());
+  const [azureTextDeployment, setAzureTextDeployment] = useState(() => loadAzureTextDeployment());
+  const [azureTextModelName, setAzureTextModelName]   = useState(() => loadAzureTextModelName());
   const [kieKeyStatus, setKieKeyStatus]               = useState<"unknown" | "set" | "unset">("unknown");
   const [azureKeyStatus, setAzureKeyStatus]   = useState<"unknown" | "set" | "unset">("unknown");
   const [codexStatus, setCodexStatus]         = useState<CodexStatus>({ kind: "unknown" });
@@ -1939,11 +1939,6 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
   /* Load persisted data on mount */
   useEffect(() => {
-    setModelProviders(loadModelProviders());
-    setAzureDeployments(loadAzureEndpoints());
-    setAzureBaseUrl(loadAzureBaseUrl());
-    setAzureTextDeployment(loadAzureTextDeployment());
-    setAzureTextModelName(loadAzureTextModelName());
     // Check if Kie key is saved on the server
     authHeader().then((h) =>
       fetch("/api/settings/kie-key", { headers: h })

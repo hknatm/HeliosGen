@@ -130,7 +130,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
   const modalHighlightRef = useRef<HTMLDivElement | null>(null);
   const modalPendingCursor = useRef<number | null>(null);
 
-  selectedRef.current = selected;
+  useEffect(() => { selectedRef.current = selected; });
 
   // Instant handle hide on deselect
   useEffect(() => {
@@ -251,7 +251,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
     })
   );
   const mentionPreviewsRef = useRef(mentionPreviews);
-  mentionPreviewsRef.current = mentionPreviews;
+  useEffect(() => { mentionPreviewsRef.current = mentionPreviews; });
 
   const filteredMentions =
     mentionQuery !== null
@@ -267,8 +267,11 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
       )
       : mentionableNodes;
 
-  useEffect(() => { setSelectedIdx(0); }, [filteredMentions.length]);
-  useEffect(() => { setExpandSelectedIdx(0); }, [expandFilteredMentions.length]);
+  // Reset the highlighted row when the list length changes (adjust state during render, not in an effect).
+  const [prevMentionLen, setPrevMentionLen] = useState(filteredMentions.length);
+  if (prevMentionLen !== filteredMentions.length) { setPrevMentionLen(filteredMentions.length); setSelectedIdx(0); }
+  const [prevExpandLen, setPrevExpandLen] = useState(expandFilteredMentions.length);
+  if (prevExpandLen !== expandFilteredMentions.length) { setPrevExpandLen(expandFilteredMentions.length); setExpandSelectedIdx(0); }
 
   // ── Elevate the RF node z-index while the menu is open ───────────────────
   useEffect(() => {
@@ -432,7 +435,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
       setMentionQuery(query);
       if (query !== null) setSelectedIdx(0);
     },
-    [id, updateNodeData]
+    [id, updateNodeData, setLocalText]
   );
 
   // ── Insert selected mention ───────────────────────────────────────────────
@@ -459,7 +462,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
       updateNodeData(id, { prompt: newText });
       setMentionQuery(null);
     },
-    [id, updateNodeData]
+    [id, updateNodeData, setLocalText]
   );
 
   const menuOpen = mentionQuery !== null && filteredMentions.length > 0;
@@ -521,7 +524,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
     const query = getMentionQuery(text, cursor);
     setExpandMentionQuery(query);
     if (query !== null) setExpandSelectedIdx(0);
-  }, [id, updateNodeData]);
+  }, [id, updateNodeData, setLocalText]);
 
   const insertMentionModal = useCallback((label: string) => {
     const ta = modalTextareaRef.current;
@@ -539,7 +542,7 @@ export default function PromptNode({ id, data, selected }: NodeProps<PromptNodeT
     modalPendingCursor.current = newPos;
     updateNodeData(id, { prompt: newText });
     setExpandMentionQuery(null);
-  }, [id, updateNodeData]);
+  }, [id, updateNodeData, setLocalText]);
 
   const handleDelete = useCallback(() => {
     onNodesChange([{ type: "remove", id }]);
