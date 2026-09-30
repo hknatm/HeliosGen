@@ -78,58 +78,108 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
 
   const current = useCallback(() => (useWorkflowStore.getState().nodes.find((n) => n.id === id)?.data.listingSlots ?? []) as ListingSlotState[], [id]);
 
-  /** Runs the given slots in order. Slot 1 pauses the run for hero review unless auto-run is on. */
-  const run = useCallback(async (ids: number[], overridePrompts = false) => {
+  type RunMode = "sequential" | "all";
+  const CONCURRENCY = 3;
+
+  /**
+   * sequential: one slot at a time (prompt, then image); pauses after the hero for review.
+   * all: hero first, then the remaining prompts are written in order and their images run in parallel.
+   */
+  const run = useCallback(async (ids: number[], opts: { mode?: RunMode; keepPrompt?: boolean } = {}) => {
     if (busy || !settings || problems.length) return;
+    const mode = opts.mode ?? "sequential";
     const controller = new AbortController();
     abortRef.current = controller;
     setBusy(true);
     setMessage("");
-    updateNodeData(id, { listingSignature: signature });
+    updateNodeData(id, { listingSignature: signature, status: "running", errorMsg: undefined });
+    const refInfo = refs.map((r) => ({ name: r.name, usageNote: r.usageNote }));
+    let failed = 0;
     try {
       const headers = await authHeaders();
       const description = await describeProductPhoto(model, refs, headers, controller.signal);
-      for (const slotId of ids) {
-        const slot = LISTING_SLOTS.find((s) => s.id === slotId)!;
-        const state = initialSlotStates(facts, refs.map((r) => ({ name: r.name, usageNote: r.usageNote })), current()).find((s) => s.id === slotId)!;
-        if (state.status === "skipped") { setSlot(slotId, { status: "skipped", note: state.note }); continue; }
-        try {
-          let prompt = overridePrompts ? current().find((s) => s.id === slotId)?.prompt : undefined;
-          if (!prompt) {
-            setSlot(slotId, { status: "running", note: "Writing prompt…" });
-            const written = await writeSlotPrompt({ slotId, model, facts, description, references: refs, states: current(), headers, signal: controller.signal });
-            if (written.skipReason) { setSlot(slotId, { status: "skipped", note: written.skipReason, prompt: undefined }); continue; }
-            prompt = written.prompt!;
-            setSlot(slotId, { prompt });
-          }
-          setSlot(slotId, { status: "running", note: "Generating image…" });
-          const hero = slotId > 1 ? current().find((s) => s.id === 1)?.imageUrl : undefined;
-          const urls = [...refs.map((r) => r.url), ...(hero ? [hero] : [])].slice(0, 16);
-          const imageUrl = await generateSlotImage({ prompt, imageUrls: urls, settings, headers, signal: controller.signal });
-          setSlot(slotId, { status: "done", imageUrl, note: undefined });
-          if (slotId === 1 && ids.length > 1 && data.listingAutoRun !== true) {
-            setMessage("Slot 1 is ready. Review the hero, then press Run to continue.");
-            break;
-          }
-        } catch (e: unknown) {
+
+      const writePrompt = async (slotId: number): Promise<string | null> => {
+        const state = initialSlotStates(facts, refInfo, current()).find((s) => s.id === slotId)!;
+        if (state.status === "skipped") { setSlot(slotId, { status: "skipped", note: state.note }); return null; }
+        const existing = opts.keepPrompt ? current().find((s) => s.id === slotId)?.prompt : undefined;
+        if (existing) return existing;
+        setSlot(slotId, { status: "running", note: "Writing prompt…" });
+        const written = await writeSlotPrompt({ slotId, model, facts, description, references: refs, states: current(), headers, signal: controller.signal });
+        if (written.skipReason) { setSlot(slotId, { status: "skipped", note: written.skipReason, prompt: undefined }); return null; }
+        setSlot(slotId, { prompt: written.prompt });
+        return written.prompt!;
+      };
+      const makeImage = async (slotId: number, prompt: string) => {
+        setSlot(slotId, { status: "running", note: "Generating image…" });
+        const hero = slotId > 1 ? current().find((s) => s.id === 1)?.imageUrl : undefined;
+        const urls = [...refs.map((r) => r.url), ...(hero ? [hero] : [])].slice(0, 16);
+        const imageUrl = await generateSlotImage({ prompt, imageUrls: urls, settings, headers, signal: controller.signal });
+        setSlot(slotId, { status: "done", imageUrl, note: undefined });
+      };
+      const guarded = async (slotId: number, work: () => Promise<void>) => {
+        try { await work(); } catch (e: unknown) {
           if ((e as Error)?.name === "AbortError") throw e;
+          failed++;
           setSlot(slotId, { status: "error", note: e instanceof Error ? e.message : String(e) });
-          void slot;
+        }
+      };
+      const single = async (slotId: number) => guarded(slotId, async () => {
+        const prompt = await writePrompt(slotId);
+        if (prompt) await makeImage(slotId, prompt);
+      });
+
+      const heroFirst = ids.includes(1) && ids.length > 1;
+      const rest = heroFirst ? ids.filter((x) => x !== 1) : ids;
+      if (heroFirst) {
+        await single(1);
+        if (mode === "sequential") {
+          setMessage("Slot 1 is ready. Review the hero, then press Run sequentially to continue.");
+          return;
         }
       }
+      if (mode === "sequential") {
+        for (const slotId of rest) await single(slotId);
+      } else {
+        const prompts = new Map<number, string>();
+        for (const slotId of rest) {
+          await guarded(slotId, async () => { const p = await writePrompt(slotId); if (p) prompts.set(slotId, p); });
+        }
+        const queue = [...prompts.keys()];
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+          for (let slotId = queue.shift(); slotId !== undefined; slotId = queue.shift()) {
+            const sid = slotId;
+            await guarded(sid, () => makeImage(sid, prompts.get(sid)!));
+          }
+        }));
+      }
     } catch (e: unknown) {
+      failed++;
       if ((e as Error)?.name === "AbortError") setMessage("Stopped.");
       else setMessage(e instanceof Error ? e.message : String(e));
       save(current().map((s) => (s.status === "running" ? { ...s, status: "idle" as const, note: undefined } : s)));
     } finally {
+      updateNodeData(id, { status: failed ? "error" : "done", errorMsg: failed ? "Some slots did not finish" : undefined });
       setBusy(false);
       abortRef.current = null;
     }
-  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, data.listingAutoRun, signature, id, updateNodeData, current]);
+  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, signature, id, updateNodeData, current]);
 
   const pending = () => slots.filter((s) => s.status === "idle" || s.status === "error").map((s) => s.id);
-  const runAll = () => run(pending());
-  const rerun = (slotId: number, keepPrompt: boolean) => run([slotId], keepPrompt);
+  const runAll = () => run(pending(), { mode: "all" });
+  const runSequential = () => run(pending(), { mode: "sequential" });
+  const rerun = (slotId: number, keepPrompt: boolean) => run([slotId], { keepPrompt });
+
+  // Canvas-wide Run all triggers this node in "all" mode.
+  const runAllRef = useRef(runAll);
+  useEffect(() => { runAllRef.current = runAll; });
+  useEffect(() => {
+    if (!data.pendingGenerate) return;
+    updateNodeData(id, { pendingGenerate: false });
+    if (problems.length || pending().length === 0) updateNodeData(id, { status: problems.length ? "error" : "done", errorMsg: problems[0] });
+    else runAllRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.pendingGenerate]);
   const stop = () => abortRef.current?.abort();
   const done = slots.filter((s) => s.status === "done").length;
   const btn = "rounded-md border border-white/15 px-2 py-1 text-[10px] text-foreground hover:bg-white/5 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]";
@@ -190,17 +240,18 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
             );
           })}
         </div>
-        <label className="flex items-center gap-1 text-[10px] text-[var(--ui-text-muted)]">
-          <input type="checkbox" disabled={readOnly} checked={data.listingAutoRun === true} onChange={(e) => updateNodeData(id, { listingAutoRun: e.target.checked })} />
-          Run all slots without pausing after the hero
-        </label>
         {stale && <div role="status" className="text-[10px] text-amber-300">Specs, photos or settings changed since these images were made. Re-run to update them.</div>}
         {(problems.length > 0 || message) && <div role="status" className="text-[10px] text-amber-300">{message || problems.join(" · ")}</div>}
         <div className="flex items-center justify-between gap-2 shrink-0">
           <span className="text-[10px] text-[var(--ui-text-faint)]">{done}/10 images</span>
           {!readOnly && (busy
             ? <button type="button" className={btn} onClick={stop}>Stop</button>
-            : <button type="button" className={btn} disabled={problems.length > 0 || pending().length === 0} onClick={runAll}>Run</button>)}
+            : (
+              <div className="flex gap-1">
+                <button type="button" className={btn} disabled={problems.length > 0 || pending().length === 0} onClick={runSequential} title="One slot at a time; pauses after the hero image">Run sequentially</button>
+                <button type="button" className={btn} disabled={problems.length > 0 || pending().length === 0} onClick={runAll} title="Hero first, then the other images in parallel">Run all</button>
+              </div>
+            ))}
         </div>
       </div>
       <TypedHandle id="references" kind="images" side="left" top={25} label="PHOTOS" title="Product photo, then optional customer photo" connected={refs.length > 0} />

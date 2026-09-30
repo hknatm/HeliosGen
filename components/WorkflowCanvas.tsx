@@ -1734,6 +1734,23 @@ export default function WorkflowCanvas() {
         }
       }
 
+      // ── Listing Set ─────────────────────────────────────────────────────────
+      // The node owns its own run (prompts, images, pacing). Trigger it in "all"
+      // mode and wait for it to settle so downstream nodes see its results.
+      if (node.type === "listingSetNode") {
+        push(`[${node.id}] running listing set…`);
+        updateNodeData(nodeId, { pendingGenerate: true });
+        await new Promise<void>((resolve) => {
+          const started = Date.now();
+          const timer = setInterval(() => {
+            const cur = useWorkflowStore.getState().nodes.find((n) => n.id === nodeId);
+            const settled = !cur || (!cur.data.pendingGenerate && cur.data.status !== "running" && Date.now() - started > 1500);
+            if (settled || Date.now() - started > 30 * 60_000) { clearInterval(timer); resolve(); }
+          }, 1000);
+        });
+        push(`[${node.id}] listing set finished`);
+      }
+
       // ── Vision assessment ───────────────────────────────────────────────────
       if (node.type === "visionNode") {
         const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
@@ -2052,7 +2069,7 @@ export default function WorkflowCanvas() {
   }, []);
 
   const canRun = !isRunning && nodes.some(
-    (n) => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "assistantNode" || n.type === "visionNode"
+    (n) => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "assistantNode" || n.type === "visionNode" || n.type === "listingSetNode"
   );
 
   const computedNodes = useMemo(() => {
