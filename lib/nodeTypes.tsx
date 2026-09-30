@@ -1,6 +1,6 @@
 // Shared node type definitions — imported by both Sidebar and NodePickerMenu
 import React from "react";
-import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus, Type, Layers, PenLine } from "lucide-react";
+import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus, Type, Layers, PenLine, ScanEye } from "lucide-react";
 
 export type NodeCategory = "generators" | "resources";
 
@@ -19,6 +19,7 @@ export const NODE_META: Record<
   styleProfileNode:   { accent: "#38bdf8", bg: "#0c2a40",  bigIcon: <ImagePlus    size={18} strokeWidth={1.7} /> },
   textContentNode:    { accent: "#f59e0b", bg: "#442a06",  bigIcon: <Type         size={18} strokeWidth={1.7} /> },
   textRendererNode:   { accent: "#f97316", bg: "#431407",  bigIcon: <Layers       size={18} strokeWidth={1.7} /> },
+  visionNode:         { accent: "#38bdf8", bg: "#0c2a40",  bigIcon: <ScanEye     size={18} strokeWidth={1.7} /> },
   promptComposerNode: { accent: "#f472b6", bg: "#4a102f",  bigIcon: <Combine     size={18} strokeWidth={1.7} /> },
   copyComposerNode:   { accent: "#a78bfa", bg: "#25154a",  bigIcon: <PenLine     size={18} strokeWidth={1.7} /> },
 };
@@ -44,6 +45,14 @@ export const NODES: Array<{
       ),
       label: "AI Agent",
       description: "LLM node — plain text or structured context, outputs a normal prompt",
+    },
+    {
+      type: "visionNode",
+      category: "generators",
+      canReceiveConnection: true,
+      icon: <ScanEye size={14} strokeWidth={1.5} />,
+      label: "Vision",
+      description: "Assess images: describe, critique, detect defects, check a brief",
     },
     {
       type: "videoGeneratorNode",
@@ -173,6 +182,7 @@ export function getLastNodeSettings(
 // Rough pixel footprint per node type — used for placement + collision detection
 export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   assistantNode: { w: 320, h: 300 },
+  visionNode: { w: 340, h: 420 },
   videoGeneratorNode: { w: 320, h: 220 }, // Safe default for 16:9 + controls
   generateNode: { w: 280, h: 280 },       // 1:1 default
   promptNode: { w: 520, h: 250 },

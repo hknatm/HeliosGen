@@ -20,6 +20,7 @@ import VideoInputNode from "@/components/nodes/VideoInputNode";
 import GenerateNode from "@/components/nodes/GenerateNode";
 import VideoGeneratorNode from "@/components/nodes/VideoGeneratorNode";
 import AssistantNode from "@/components/nodes/AssistantNode";
+import VisionNode from "@/components/nodes/VisionNode";
 import VariableNode from "@/components/nodes/VariableNode";
 import PromptComposerNode from "@/components/nodes/PromptComposerNode";
 import BrandProfileNode from "@/components/nodes/BrandProfileNode";
@@ -37,6 +38,7 @@ const nodeTypes = {
   generateNode: GenerateNode,
   videoGeneratorNode: VideoGeneratorNode,
   assistantNode: AssistantNode,
+  visionNode: VisionNode,
   variableNode: VariableNode,
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,

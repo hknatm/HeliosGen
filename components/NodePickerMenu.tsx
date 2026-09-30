@@ -35,7 +35,7 @@ function closestRatio(ratioFloat: number, candidates: string[]): string | null {
 // Node types whose OUTPUT can feed a given input handle
 function sourceNodeTypesFor(targetHandle: string | null): string[] {
   switch (targetHandle) {
-    case "prompt":                         return ["promptNode", "assistantNode", "variableNode", "textContentNode", "promptComposerNode"];
+    case "prompt":                         return ["promptNode", "assistantNode", "visionNode", "variableNode", "textContentNode", "promptComposerNode"];
     case "variables":                      return ["variableNode", "brandProfileNode", "styleProfileNode"];
     case "references":                     return ["imageInputNode", "generateNode", "textRendererNode"];
     case "image":                          return ["imageInputNode", "generateNode", "textRendererNode", "assistantNode"];
@@ -58,6 +58,7 @@ function outputHandleForNewNode(newNodeType: string, targetHandle: string): stri
   if (newNodeType === "textRendererNode") return "imageOut";
   if (newNodeType === "assistantNode" && targetHandle === "image") return "refsOut";
   if (newNodeType === "assistantNode" && targetHandle === "prompt") return "textOut";
+  if (newNodeType === "visionNode") return "textOut";
   if (newNodeType === "videoInputNode") {
     if (targetHandle === "videoRef" || targetHandle === "referenceVideo") return "videoRefOut";
     if (targetHandle === "startFrame") return "startFrameOut";
@@ -78,6 +79,10 @@ function inputHandleTopY(nodeType: string | undefined, handleId: string | null, 
     if (handleId === "variables") return nodeH * 0.44;
     // Legacy saved workflows can retain a hidden text input edge.
     if (handleId === "text") return nodeH * 0.5;
+  }
+  if (nodeType === "visionNode") {
+    if (handleId === "references") return nodeH * 0.38;
+    if (handleId === "prompt") return nodeH * 0.6;
   }
   if (nodeType === "assistantNode") {
     if (handleId === "variables") return nodeH * 0.26;
@@ -111,6 +116,7 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   generateNode:       "IMAGE GEN",
   videoGeneratorNode: "VIDEO GEN",
   assistantNode:      "AI AGENT",
+  visionNode:         "VISION",
 };
 
 export interface DropState {
@@ -136,9 +142,14 @@ function targetHandleFor(
   sourceHandleId: string | null,
 ): string | null {
   if (targetNodeType === "promptComposerNode" && (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode")) return "variables";
+  if (targetNodeType === "visionNode") {
+    if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") return "references";
+    if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "visionNode" || sourceNodeType === "textContentNode" || sourceNodeType === "promptComposerNode") return "prompt";
+    return null;
+  }
   if (targetNodeType === "assistantNode") {
     if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode") return "variables";
-    if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "textContentNode" || sourceNodeType === "promptComposerNode") return "prompt";
+    if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "visionNode" || sourceNodeType === "textContentNode" || sourceNodeType === "promptComposerNode") return "prompt";
     if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") return "references";
     return null;
   }
@@ -180,7 +191,7 @@ function targetHandleFor(
     }
   }
   // Single-output nodes — fall back to node-type routing
-  if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "promptComposerNode" || sourceNodeType === "variableNode" || sourceNodeType === "textContentNode") return "prompt";
+  if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "visionNode" || sourceNodeType === "promptComposerNode" || sourceNodeType === "variableNode" || sourceNodeType === "textContentNode") return "prompt";
   if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") {
     if (targetNodeType === "videoGeneratorNode") return "startFrame";
     if (targetNodeType === "generateNode")       return "image";

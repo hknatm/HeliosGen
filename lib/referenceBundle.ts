@@ -132,7 +132,7 @@ export function resolveAgentAuthoredPrompt(nodeId: string, nodes: Node<NodeData>
   const source = promptEdge ? nodes.find((item) => item.id === promptEdge.source) : undefined;
   let connected = "";
   if (source?.type === "promptNode") connected = String(source.data.prompt ?? "").trim();
-  else if (source?.type === "assistantNode") connected = String(source.data.outputText ?? "").trim();
+  else if (source?.type === "assistantNode" || source?.type === "visionNode") connected = String(source.data.outputText ?? "").trim();
   else if (source?.type === "variableNode") connected = variableNodePromptText(source);
   else if (source?.type === "promptComposerNode") connected = String(source.data.resolvedPrompt ?? source.data.prompt ?? "").trim();
   else if (source?.type === "textContentNode") connected = textContentPrompt(source.data.textContent as TextContent | undefined);

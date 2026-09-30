@@ -41,7 +41,9 @@ import ImageInputNode from "./nodes/ImageInputNode";
 import VideoInputNode from "./nodes/VideoInputNode";
 import GenerateNode from "./nodes/GenerateNode";
 import VideoGeneratorNode from "./nodes/VideoGeneratorNode";
+import VisionNode from "@/components/nodes/VisionNode";
 import AssistantNode from "./nodes/AssistantNode";
+import { runVisionAssessment, visionModelReady } from "@/lib/vision";
 import VariableNode from "./nodes/VariableNode";
 import PromptComposerNode from "./nodes/PromptComposerNode";
 import BrandProfileNode from "./nodes/BrandProfileNode";
@@ -82,6 +84,7 @@ const nodeTypes = {
   generateNode: GenerateNode,
   videoGeneratorNode: VideoGeneratorNode,
   assistantNode: AssistantNode,
+  visionNode: VisionNode,
   variableNode: VariableNode,
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,
@@ -179,6 +182,7 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     generateNode: "IMAGE GEN",
     videoGeneratorNode: "VIDEO GEN",
     assistantNode: "AI AGENT",
+    visionNode: "VISION",
     variableNode: "VARIABLE",
     brandProfileNode: "BRAND",
     styleProfileNode: "STYLE",
@@ -188,6 +192,7 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     copyComposerNode: "COPY COMPOSER",
   };
   if (type === "assistantNode") return "AI AGENT";
+  if (type === "visionNode") return `VISION #${count}`;
   if (type === "variableNode") return `VARIABLE #${count}`;
   if (type === "brandProfileNode") return `BRAND #${count}`;
   if (type === "styleProfileNode") return `STYLE #${count}`;
@@ -1080,6 +1085,7 @@ export default function WorkflowCanvas() {
         connection.targetHandle === "prompt" &&
         source?.type !== "promptNode" &&
         source?.type !== "assistantNode" &&
+        source?.type !== "visionNode" &&
         source?.type !== "variableNode" &&
         source?.type !== "textContentNode" &&
         source?.type !== "promptComposerNode"
@@ -1095,6 +1101,27 @@ export default function WorkflowCanvas() {
           (connection.targetHandle === "variables" && (source?.type === "variableNode" || source?.type === "brandProfileNode"));
         if (!validRendererSource) return false;
         if (connection.targetHandle !== "variables" && edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
+      }
+
+      // Vision accepts ordered images (max 16) and one optional text brief.
+      if (target?.type === "visionNode") {
+        if (connection.targetHandle === "prompt") {
+          if (source?.type !== "promptNode" && source?.type !== "assistantNode" && source?.type !== "visionNode" && source?.type !== "variableNode" && source?.type !== "textContentNode" && source?.type !== "promptComposerNode") return false;
+          return !edges.some((edge) => edge.target === connection.target && edge.targetHandle === "prompt");
+        }
+        if (connection.targetHandle === "references") {
+          if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode") return false;
+          if (edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === "references")) return false;
+          const used = edges
+            .filter((edge) => edge.target === connection.target && edge.targetHandle === "references")
+            .reduce((total, edge) => {
+              const candidate = nodes.find((node) => node.id === edge.source);
+              return total + (candidate?.type === "imageInputNode" && Array.isArray(candidate.data.referenceImages) ? candidate.data.referenceImages.length : 1);
+            }, 0);
+          const adding = source.type === "imageInputNode" && Array.isArray(source.data.referenceImages) ? source.data.referenceImages.length : 1;
+          return used + adding <= 16;
+        }
+        return false;
       }
 
       // AI Agent accepts optional structured context and multiple image references.
@@ -1114,7 +1141,7 @@ export default function WorkflowCanvas() {
           return connectedCount + sourceCount <= 16 && !edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === "references");
         }
         if (connection.targetHandle === "prompt") {
-          if (source?.type !== "promptNode" && source?.type !== "assistantNode" && source?.type !== "variableNode" && source?.type !== "textContentNode" && source?.type !== "promptComposerNode") return false;
+          if (source?.type !== "promptNode" && source?.type !== "assistantNode" && source?.type !== "visionNode" && source?.type !== "variableNode" && source?.type !== "textContentNode" && source?.type !== "promptComposerNode") return false;
           return !edges.some((edge) => edge.target === connection.target && edge.targetHandle === "prompt");
         }
         return false;
@@ -1141,7 +1168,7 @@ export default function WorkflowCanvas() {
       // Image/resource handles do not accept text (prompt) nodes. The only AI
       // Agent image edge is its explicit ordered reference-bundle output.
       if (
-        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "textContentNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode" || source?.type === "promptComposerNode") &&
+        (source?.type === "promptNode" || source?.type === "variableNode" || source?.type === "textContentNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode" || source?.type === "promptComposerNode" || source?.type === "visionNode") &&
         (connection.targetHandle === "image" ||
           connection.targetHandle === "resource" ||
           connection.targetHandle === "startFrame" ||
@@ -1678,6 +1705,42 @@ export default function WorkflowCanvas() {
         }
       }
 
+      // ── Vision assessment ───────────────────────────────────────────────────
+      if (node.type === "visionNode") {
+        const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
+        const resolution = resolveReferenceImages(nodeId, fresh, edges, "references");
+        const visionModel = (node.data.visionModel as string | undefined) ?? "gpt-5-2";
+        const error = resolution.error
+          ?? (resolution.references.length === 0 ? "Connect at least one image to assess." : undefined)
+          ?? (visionModelReady(visionModel) ? undefined : "Select GPT 5.2 · Vision or a custom model marked Vision.");
+        if (error) {
+          updateNodeData(nodeId, { status: "error", errorMsg: error });
+          push(`[${node.id}] skipped — ${error}`, false);
+          continue;
+        }
+        if (debugMode) { push(`[DEBUG] ${node.id} — vision skipped`); continue; }
+        push(`[${node.id}] assessing images…`);
+        updateNodeData(nodeId, { status: "running", outputText: "", errorMsg: undefined });
+        try {
+          const text = await runVisionAssessment({
+            model: visionModel,
+            presetId: node.data.visionPreset,
+            outputMode: node.data.visionOutput === "json" ? "json" : "text",
+            question: (node.data.localPrompt as string | undefined) ?? "",
+            connectedText: resolveInputs(nodeId, fresh, edges).prompt ?? "",
+            references: resolution.references,
+            headers: authHeaders(token),
+            onDelta: (acc) => updateNodeData(nodeId, { outputText: acc }),
+          });
+          updateNodeData(nodeId, { status: "done", outputText: text });
+          push(`[${node.id}] done`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          updateNodeData(nodeId, { status: "error", errorMsg: msg, outputText: "" });
+          push(`[${node.id}] error: ${msg}`, false);
+        }
+      }
+
       // ── Assistant (text-to-text LLM) ────────────────────────────────────────
       if (node.type === "assistantNode") {
         const fresh = useWorkflowStore.getState().nodes as Node<NodeData>[];
@@ -1959,7 +2022,7 @@ export default function WorkflowCanvas() {
   }, []);
 
   const canRun = !isRunning && nodes.some(
-    (n) => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "assistantNode"
+    (n) => n.type === "generateNode" || n.type === "videoGeneratorNode" || n.type === "assistantNode" || n.type === "visionNode"
   );
 
   const computedNodes = useMemo(() => {

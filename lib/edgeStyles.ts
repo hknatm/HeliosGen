@@ -35,12 +35,13 @@ export function getSourceHandleColor(nodeType: string | undefined, sourceHandleI
     case "videoRefOut": return "#22d3ee";
     case "audioRefOut": return "#a78bfa";
     case "refsOut": return "#fb923c";
-    case "textOut": return nodeType === "assistantNode" ? "#FBBF24" : "#2DD4BF";
+    case "textOut": return nodeType === "assistantNode" ? "#FBBF24" : nodeType === "visionNode" ? "#38bdf8" : "#2DD4BF";
   }
   // Legacy / single-output nodes — derive from node type
   switch (nodeType) {
     case "promptNode": return "#2DD4BF";
     case "assistantNode": return "#FBBF24";
+    case "visionNode": return "#38bdf8";
     case "imageInputNode": return "#818cf8";
     case "generateNode": return "#818cf8";
     case "textRendererNode": return "#f97316";

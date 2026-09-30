@@ -198,6 +198,10 @@ export interface NodeData extends Record<string, unknown> {
   /** Atomic AI Agent output: composed prompt plus the unchanged ordered reference bundle. */
   referencePackage?: import("./referenceBundle").AgentReferencePackage;
   agentInputSignature?: string;
+  /** Vision Assessment node settings. */
+  visionModel?: string;
+  visionPreset?: string;
+  visionOutput?: "text" | "json";
   // generation settings
   quality?: string;
   azureQuality?: string;
@@ -243,6 +247,7 @@ function filterKeys<T extends object>(obj: T, keys: (keyof T)[]): Partial<T> | n
 /** Human-readable label for each node type, including the counter */
 export function getNodeLabel(type: string, n: number): string {
   if (type === "assistantNode") return "AI AGENT";
+  if (type === "visionNode") return `VISION #${n}`;
   const map: Record<string, string> = {
     promptNode:          `Text #${n}`,
     imageInputNode:      `Image #${n}`,

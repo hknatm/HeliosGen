@@ -36,6 +36,7 @@
     "../lib/composerSources.ts",
     "../lib/copyComposer.ts",
     "../lib/store.ts",
+    "../lib/vision.ts",
     "test-local-db.ts",
     "test-deferred-storage.ts",
     "test-local-generated-asset.ts",
@@ -54,6 +55,7 @@
     "test-copy-composer.ts",
     "test-custom-provider.ts",
     "test-node-dimensions.ts",
+    "test-vision.ts",
     "test-render-e2e.ts"
   ]
 }

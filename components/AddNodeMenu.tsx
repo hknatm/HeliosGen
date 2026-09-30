@@ -21,7 +21,7 @@ const SECTIONS: Array<{ id: string; label: string; nodeTypes: string[] }> = [
   {
     id: "generators",
     label: "GENERATORS",
-    nodeTypes: ["generateNode", "videoGeneratorNode", "textRendererNode", "assistantNode"],
+    nodeTypes: ["generateNode", "videoGeneratorNode", "textRendererNode", "assistantNode", "visionNode"],
   },
   {
     id: "resources",
@@ -97,6 +97,7 @@ export default function AddNodeMenu({ anchorRect, onClose }: AddNodeMenuProps) {
         generateNode: "IMAGE GEN",
         videoGeneratorNode: "VIDEO GEN",
         assistantNode: "AI AGENT",
+        visionNode: "VISION",
         variableNode: "VARIABLE",
         brandProfileNode: "BRAND",
         styleProfileNode: "STYLE",
