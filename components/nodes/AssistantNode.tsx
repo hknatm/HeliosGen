@@ -5,6 +5,8 @@ import { Handle, Position, NodeProps, Node } from "@xyflow/react";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { useAnimatedPopup } from "@/lib/useAnimatedPopup";
 import CornerResizer from "./CornerResizer";
+import TypedHandle from "./TypedHandle";
+import NodeStatusBadge from "./NodeStatusBadge";
 import { createClient } from "@/lib/supabase/client";
 import { useGeneratingBorderAnimation } from "@/lib/useGeneratingBorderAnimation";
 import { useReadOnly } from "@/lib/readOnlyContext";
@@ -311,6 +313,7 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
       <CornerResizer minWidth={200} minHeight={120} />
 
       <span className="node-above-label">{data.label as string}</span>
+      <NodeStatusBadge status={status} stale={packageStale} className="absolute -top-[22px] right-0" />
       <span className={`agent-prompt-badge${missingSystemPrompt ? " agent-prompt-badge-missing" : ""}`} title={missingSystemPrompt ? "The selected preset was deleted. Global default will be used." : selectedSystemPrompt?.tags.join(", ") || "Global default system prompt"}>
         {missingSystemPrompt ? "Missing preset · Global default" : selectedSystemPrompt?.name ?? "Global default"}
       </span>
@@ -615,40 +618,9 @@ export default function AssistantNode({ id, data, selected }: NodeProps<Assistan
         <ReferenceIcon />
       </Handle>
 
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(62% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>PROMPT</span>
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="prompt"
-        title="Optional: Text, Variable, or another AI Agent output"
-        style={{ top: "62%", background: "#2DD4BF", border: "2px solid #171923", width: 10, height: 10 }}
-      />
-
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(44% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>REFS</span>
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="references"
-        title="Optional: ordered reference images"
-        style={{ top: "44%", background: "#fb923c", border: "2px solid #171923", width: 10, height: 10 }}
-      />
-
-      {/* ── Structured context input handle (Variables / Style / Brand) ── */}
-      {hasContext && (
-        <span
-          aria-hidden="true"
-          style={{ position: "absolute", left: 13, top: "calc(26% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}
-        >
-          CONTEXT
-        </span>
-      )}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="variables"
-        title="Optional: Variables, Brand Context, or Image Style Profile"
-        style={{ top: "26%", background: "#a78bfa", border: "2px solid #171923", width: 10, height: 10 }}
-      />
+      <TypedHandle id="prompt" kind="prompt" side="left" top={62} title="Optional: Text, Variable, Vision report, or another AI Agent output" connected={!!connectedPrompt} />
+      <TypedHandle id="references" kind="images" side="left" top={44} label="REFS" title="Optional: ordered reference images" connected={referencesConnected} />
+      <TypedHandle id="variables" kind="context" side="left" top={26} title="Optional: Variables, Brand Context, or Image Style Profile" connected={hasContext} showLabel={hasContext} />
     </div>
   );
 }

@@ -1,8 +1,11 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Handle, Position, NodeProps, Node } from "@xyflow/react";
+import { NodeProps, Node } from "@xyflow/react";
 import GenerateButton from "@/components/nodes/GenerateButton";
 import CornerResizer from "./CornerResizer";
+import TypedHandle from "./TypedHandle";
+import NodeStatusBadge from "./NodeStatusBadge";
+import NodeActionBar from "./NodeActionBar";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { createClient } from "@/lib/supabase/client";
@@ -110,6 +113,20 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
     updateNodeData(id, { status: "idle" });
   }, [id, updateNodeData]);
 
+  const addNode = useWorkflowStore((s) => s.addNode);
+  const insertEdge = useWorkflowStore((s) => s.insertEdge);
+  const handleDuplicate = useCallback(() => {
+    const state = useWorkflowStore.getState();
+    const src = state.nodes.find((n) => n.id === id);
+    if (!src) return;
+    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    onNodesChange([{ type: "select", id, selected: false }]);
+    addNode({ ...src, id: newId, position: { x: src.position.x + 20, y: src.position.y + 20 }, selected: true, data: { ...src.data, status: "idle" as const, outputText: undefined } });
+    state.edges
+      .filter((e) => e.target === id && e.deletable !== false)
+      .forEach((e) => insertEdge({ ...e, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), target: newId }));
+  }, [id, addNode, insertEdge, onNodesChange]);
+
   const patch = (p: Partial<NodeData>) => updateNodeData(id, { ...p, outputText: "", status: "idle" });
 
   const selectCls = "w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
@@ -118,6 +135,8 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
     <div ref={cardRef} className={`node-card w-full h-full flex flex-col${busy ? " node-generating" : ""}`} style={{ minWidth: 280 }}>
       <CornerResizer minWidth={260} minHeight={260} />
       <span className="node-above-label">{data.label as string}</span>
+      <NodeStatusBadge status={status} className="absolute -top-[22px] right-0" />
+      <NodeActionBar visible={!!selected && !readOnly} hasContent={false} onDelete={() => onNodesChange([{ type: "remove", id }])} onDuplicate={handleDuplicate} />
 
       <div className="flex-1 min-h-0 flex flex-col gap-2 p-3">
         <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
@@ -177,15 +196,9 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
         </div>
       </div>
 
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(38% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>IMAGES</span>
-      <Handle type="target" position={Position.Left} id="references" title="Images to assess" style={{ top: "38%", background: "#fb923c", border: "2px solid #171923", width: 10, height: 10 }} />
-      <span aria-hidden="true" style={{ position: "absolute", left: 13, top: "calc(60% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>BRIEF</span>
-      <Handle type="target" position={Position.Left} id="prompt" title="Optional brief or question text" style={{ top: "60%", background: "#2DD4BF", border: "2px solid #171923", width: 10, height: 10 }} />
-      <span aria-hidden="true" style={{ position: "absolute", right: 13, top: "calc(50% - 7px)", color: "rgba(255,255,255,0.42)", fontSize: 8, fontWeight: 700 }}>REPORT</span>
-      <Handle type="source" position={Position.Right} id="textOut" title="Assessment output" style={{ top: "50%", background: "#FBBF24", border: "2px solid #171923", width: 10, height: 10 }} />
-      <button type="button" aria-label="Delete node" tabIndex={selected ? 0 : -1} onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); onNodesChange([{ type: "remove", id }]); }}
-        className="absolute -top-7 right-0 text-[10px] text-muted-foreground hover:text-red-400 transition-opacity" style={{ opacity: selected ? 1 : 0 }}>Delete</button>
+      <TypedHandle id="references" kind="images" side="left" top={38} title="Images to assess" connected={references.length > 0} />
+      <TypedHandle id="prompt" kind="prompt" side="left" top={60} label="BRIEF" title="Optional brief or question text" connected={!!connectedText} />
+      <TypedHandle id="textOut" kind="report" side="right" top={50} label="REPORT" title="Assessment output" connected={edges.some((e) => e.source === id)} />
     </div>
   );
 }
