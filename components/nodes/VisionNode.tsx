@@ -14,6 +14,7 @@ import { customModelId, customModelSupportsVision, loadCustomProviderConfig, loa
 import { MULTIMODAL_AGENT_MODEL, resolveReferenceImages } from "@/lib/referenceBundle";
 import { resolveInputs } from "@/lib/executor";
 import { VISION_PRESETS, runVisionAssessment, visionModelReady, type VisionOutputMode } from "@/lib/vision";
+import { loadSystemPromptSettings, type SystemPromptPreset } from "@/lib/systemPrompt";
 
 type VisionNodeType = Node<NodeData, "visionNode">;
 
@@ -29,11 +30,14 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
   const abortRef = useRef<AbortController | null>(null);
   const [loading, setLoading] = useState(false);
   const [customModels, setCustomModels] = useState(() => loadCustomProviderModels());
+  const [libraryPrompts, setLibraryPrompts] = useState<SystemPromptPreset[]>(() => loadSystemPromptSettings().presets);
 
   const status = (data.status as string) ?? "idle";
   const outputText = (data.outputText as string) ?? "";
   const model = (data.visionModel as string) ?? MULTIMODAL_AGENT_MODEL;
   const preset = (data.visionPreset as string) ?? "describe";
+  const promptId = typeof data.visionPromptId === "string" ? data.visionPromptId : "";
+  const promptMissing = !!promptId && !libraryPrompts.some((p) => p.id === promptId);
   const outputMode: VisionOutputMode = data.visionOutput === "json" ? "json" : "text";
   const question = (data.localPrompt as string) ?? "";
   const busy = loading || status === "running";
@@ -48,6 +52,12 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
       window.removeEventListener("aiui-custom-provider-models-changed", refresh);
       window.removeEventListener("aiui-custom-provider-config-changed", refresh);
     };
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setLibraryPrompts(loadSystemPromptSettings().presets);
+    window.addEventListener("aiui-system-prompts-changed", refresh);
+    return () => window.removeEventListener("aiui-system-prompts-changed", refresh);
   }, []);
 
   const modelOptions = useMemo(() => [
@@ -84,7 +94,7 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
       const text = await runVisionAssessment({
-        model, presetId: preset, outputMode, question, connectedText, references, headers,
+        model, presetId: preset, promptId, outputMode, question, connectedText, references, headers,
         signal: controller.signal,
         onDelta: (acc) => updateNodeData(id, { outputText: acc }),
       });
@@ -96,7 +106,7 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
       setLoading(false);
       abortRef.current = null;
     }
-  }, [busy, canRun, id, model, preset, outputMode, question, connectedText, references, updateNodeData]);
+  }, [busy, canRun, id, model, preset, promptId, outputMode, question, connectedText, references, updateNodeData]);
 
   const runRef = useRef(handleRun);
   useEffect(() => { runRef.current = handleRun; }, [handleRun]);
@@ -142,8 +152,26 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
         <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
           <label className="flex-1 min-w-0">
             <span className="sr-only">Assessment type</span>
-            <select aria-label="Assessment type" className={selectCls} value={preset} disabled={readOnly || busy} onChange={(e) => patch({ visionPreset: e.target.value })}>
-              {VISION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            <select
+              aria-label="Assessment type"
+              className={selectCls}
+              value={promptId ? `lib:${promptId}` : preset}
+              disabled={readOnly || busy}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v.startsWith("lib:")) patch({ visionPromptId: v.slice(4) });
+                else patch({ visionPreset: v, visionPromptId: undefined });
+              }}
+            >
+              <optgroup label="Built-in">
+                {VISION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </optgroup>
+              {(libraryPrompts.length > 0 || promptMissing) && (
+                <optgroup label="Prompt library">
+                  {promptMissing && <option value={`lib:${promptId}`}>Missing preset · using built-in</option>}
+                  {libraryPrompts.map((p) => <option key={p.id} value={`lib:${p.id}`}>{p.name}</option>)}
+                </optgroup>
+              )}
             </select>
           </label>
           <div role="group" aria-label="Output format" className="flex shrink-0 rounded-md border border-white/10 overflow-hidden">

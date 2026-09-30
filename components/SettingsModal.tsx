@@ -1722,7 +1722,7 @@ function TextPromptsPanel() {
         <div className="settings-row settings-row-between">
           <div>
             <h3 id="prompt-presets-heading" className="settings-section-title">Agent presets</h3>
-            <p className="settings-description">Each preset is available from the System prompt selector on AI Agent nodes.</p>
+            <p className="settings-description">Each preset is available from the System prompt selector on AI Agent nodes, and as a custom assessment type on Vision nodes. On a Vision node the preset text replaces the built-in task instruction; the output format (text or JSON) stays code-controlled.</p>
           </div>
           <button type="button" className="settings-button settings-button-primary" onClick={addPreset} disabled={drafts.presets.length >= 100}>Add prompt</button>
         </div>

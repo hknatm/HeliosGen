@@ -1740,6 +1740,7 @@ export default function WorkflowCanvas() {
           const text = await runVisionAssessment({
             model: visionModel,
             presetId: node.data.visionPreset,
+            promptId: node.data.visionPromptId,
             outputMode: node.data.visionOutput === "json" ? "json" : "text",
             question: (node.data.localPrompt as string | undefined) ?? "",
             connectedText: resolveInputs(nodeId, fresh, edges).prompt ?? "",

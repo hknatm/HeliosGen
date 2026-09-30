@@ -201,6 +201,8 @@ export interface NodeData extends Record<string, unknown> {
   /** Vision Assessment node settings. */
   visionModel?: string;
   visionPreset?: string;
+  /** Optional Settings library preset that replaces the built-in Vision instruction. */
+  visionPromptId?: string;
   visionOutput?: "text" | "json";
   // generation settings
   quality?: string;

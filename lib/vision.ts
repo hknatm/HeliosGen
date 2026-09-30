@@ -6,6 +6,7 @@
  */
 import { customModelSupportsVision, loadCustomProviderConfig } from "./customProvider";
 import { MULTIMODAL_AGENT_MODEL, type ReferenceImage } from "./referenceBundle";
+import { findSystemPromptPreset } from "./systemPrompt";
 
 export type VisionPresetId = "describe" | "quality" | "defects" | "style" | "brief" | "ocr";
 export type VisionOutputMode = "text" | "json";
@@ -30,11 +31,16 @@ export function visionPreset(id: unknown) {
   return VISION_PRESETS.find((preset) => preset.id === id) ?? VISION_PRESETS[0];
 }
 
-export function buildVisionUserPrompt(presetId: unknown, question: string, connectedText: string, references: ReferenceImage[]): string {
+/** Instruction text from a Settings library preset, or undefined when unset/missing (falls back to the built-in preset). */
+export function resolveVisionInstruction(promptId: unknown): string | undefined {
+  return typeof promptId === "string" && promptId ? findSystemPromptPreset(promptId)?.content : undefined;
+}
+
+export function buildVisionUserPrompt(presetId: unknown, question: string, connectedText: string, references: ReferenceImage[], instructionOverride?: string): string {
   const preset = visionPreset(presetId);
   const brief = [connectedText.trim(), question.trim()].filter(Boolean).join("\n\n");
   return [
-    `Task: ${preset.instruction}`,
+    `Task: ${instructionOverride?.trim() || preset.instruction}`,
     brief ? `${preset.id === "brief" ? "Brief" : "Additional instructions"}:\n${brief}` : "",
     references.length
       ? ["Attached images, in order:", ...references.map((reference, index) => `Reference ${index + 1} — ${reference.name}${reference.usageNote ? ` (${reference.usageNote.replace(/\s+/g, " ")})` : ""}`)].join("\n")
@@ -62,6 +68,8 @@ export function normalizeVisionJson(raw: string): string {
 export interface VisionRunInput {
   model: string;
   presetId: unknown;
+  /** Optional Settings library preset id; its content replaces the built-in task instruction. */
+  promptId?: unknown;
   outputMode: VisionOutputMode;
   question: string;
   connectedText: string;
@@ -80,7 +88,7 @@ export async function runVisionAssessment(input: VisionRunInput): Promise<string
     method: "POST",
     headers: input.headers,
     body: JSON.stringify({
-      prompt: buildVisionUserPrompt(input.presetId, input.question, input.connectedText, input.references),
+      prompt: buildVisionUserPrompt(input.presetId, input.question, input.connectedText, input.references, resolveVisionInstruction(input.promptId)),
       model: input.model,
       references: input.references,
       systemPrompt: input.outputMode === "json" ? VISION_JSON_CONTRACT : VISION_TEXT_CONTRACT,
