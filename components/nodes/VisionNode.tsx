@@ -6,6 +6,7 @@ import CornerResizer from "./CornerResizer";
 import TypedHandle from "./TypedHandle";
 import NodeStatusBadge from "./NodeStatusBadge";
 import NodeActionBar from "./NodeActionBar";
+import NodeSection from "./NodeSection";
 import { useWorkflowStore, NodeData } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { createClient } from "@/lib/supabase/client";
@@ -208,14 +209,18 @@ export default function VisionNode({ id, data, selected }: NodeProps<VisionNodeT
           {outputText || (status === "error" ? <span className="text-red-400">{(data.errorMsg as string) ?? "Assessment failed"}</span> : <span className="text-muted-foreground">The assessment will appear here.</span>)}
         </div>
 
-        <div className="flex items-center justify-between gap-2 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
-          <label className="min-w-0 flex-1">
+        <NodeSection title="Advanced" summary={outputMode === "json" ? "JSON output" : undefined}>
+          <label className="block">
             <span className="sr-only">Vision model</span>
             <select aria-label="Vision model" className={selectCls} value={model} disabled={readOnly || busy} onChange={(e) => patch({ visionModel: e.target.value })}>
               {!modelOptions.some((m) => m.id === model) && <option value={model}>{model} (not vision-enabled)</option>}
               {modelOptions.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           </label>
+        </NodeSection>
+
+        <div className="flex items-center justify-between gap-2 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+          <span className="min-w-0 flex-1 truncate text-[10px] text-[var(--ui-text-faint)]" title={model}>{modelOptions.find((m) => m.id === model)?.label ?? model}</span>
           {!readOnly && (busy ? (
             <button type="button" onClick={(e) => { e.stopPropagation(); handleStop(); }} className="px-2 py-1 rounded-md text-[10px] border border-white/15 text-muted-foreground hover:bg-white/5">Stop</button>
           ) : (

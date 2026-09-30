@@ -180,21 +180,24 @@ export function getLastNodeSettings(
 }
 
 // Rough pixel footprint per node type — used for placement + collision detection
+/** Shared width classes so a graph reads evenly. Heights stay per-node (content-driven). */
+export const NODE_WIDTH = { compact: 280, standard: 340, wide: 460 } as const;
+
 export const NODE_SIZE: Record<string, { w: number; h: number }> = {
-  assistantNode: { w: 320, h: 300 },
-  visionNode: { w: 340, h: 420 },
-  videoGeneratorNode: { w: 320, h: 220 }, // Safe default for 16:9 + controls
-  generateNode: { w: 280, h: 280 },       // 1:1 default
-  promptNode: { w: 520, h: 250 },
-  imageInputNode: { w: 460, h: 420 },
+  assistantNode: { w: NODE_WIDTH.standard, h: 300 },
+  visionNode: { w: NODE_WIDTH.standard, h: 420 },
+  videoGeneratorNode: { w: NODE_WIDTH.standard, h: 220 }, // Safe default for 16:9 + controls
+  generateNode: { w: NODE_WIDTH.compact, h: 280 },       // 1:1 default
+  promptNode: { w: NODE_WIDTH.wide, h: 250 },
+  imageInputNode: { w: NODE_WIDTH.wide, h: 420 },
   videoInputNode: { w: 220, h: 180 },
-  variableNode: { w: 280, h: 220 },
-  brandProfileNode: { w: 330, h: 310 },
-  styleProfileNode: { w: 360, h: 460 },
-  textContentNode: { w: 330, h: 380 },
-  textRendererNode: { w: 380, h: 560 },
-  promptComposerNode: { w: 420, h: 300 },
-  copyComposerNode:   { w: 360, h: 360 },
+  variableNode: { w: NODE_WIDTH.compact, h: 220 },
+  brandProfileNode: { w: NODE_WIDTH.standard, h: 310 },
+  styleProfileNode: { w: NODE_WIDTH.standard, h: 460 },
+  textContentNode: { w: NODE_WIDTH.standard, h: 380 },
+  textRendererNode: { w: NODE_WIDTH.standard, h: 520 },
+  promptComposerNode: { w: NODE_WIDTH.wide, h: 300 },
+  copyComposerNode: { w: NODE_WIDTH.standard, h: 360 },
 };
 
 export const FALLBACK_SIZE = { w: 280, h: 280 };

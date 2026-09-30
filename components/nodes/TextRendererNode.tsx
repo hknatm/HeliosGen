@@ -5,6 +5,7 @@ import { Handle, Node, NodeProps, Position } from "@xyflow/react";
 import CornerResizer from "./CornerResizer";
 import TypedHandle from "./TypedHandle";
 import NodeStatusBadge from "./NodeStatusBadge";
+import NodeSection from "./NodeSection";
 import MissingInputWarning from "./MissingInputWarning";
 import { NodeData, TextContent, useWorkflowStore } from "@/lib/store";
 import { useReadOnly } from "@/lib/readOnlyContext";
@@ -478,7 +479,8 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
               <button type="button" disabled={ownCopy.bullets.length >= 5} onMouseDown={mouseDown} onClick={(e) => { e.stopPropagation(); addBullet(); }} style={{ alignSelf: "flex-start", background: "rgba(255,255,255,0.05)", border: "1px dashed rgba(255,255,255,0.18)", color: ownCopy.bullets.length >= 5 ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.5)", borderRadius: 5, padding: "2px 7px", fontSize: 10, cursor: ownCopy.bullets.length >= 5 ? "not-allowed" : "pointer" }}>+ Add bullet</button>
             )}
             {/* Typography */}
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 6, marginTop: 2, display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 4, marginTop: 2 }}>
+              <NodeSection title="Typography" summary={`${ownCopy.fontFamily} · ${ownCopy.alignment}`}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <label htmlFor={`text-overlay-${id}-font`} style={{ width: 62, color: "rgba(255,255,255,0.4)", fontSize: 9, fontWeight: 600 }}>Font</label>
                 <select id={`text-overlay-${id}-font`} value={ownCopy.fontFamily} disabled={readOnly} onChange={(e) => setTextField("fontFamily", e.target.value)} onMouseDown={(e) => { if (readOnly) e.preventDefault(); }} style={{ flex: 1, minWidth: 0, background: "rgba(0,0,0,0.28)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 5, padding: "4px 7px", fontSize: 11, color: "rgba(255,255,255,0.85)" }}>
@@ -497,6 +499,7 @@ export default function TextRendererNode({ id, data, selected }: NodeProps<TextR
                   ))}
                 </div>
               </div>
+              </NodeSection>
             </div>
           </div>
 
