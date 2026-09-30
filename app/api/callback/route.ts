@@ -5,7 +5,7 @@ import { mirrorToR2 } from "@/lib/r2";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { GUEST_MODE } from "@/lib/guestMode";
 import * as guestDb from "@/lib/guest/db";
-import { callbackSecretConfigured, verifyCallbackSecret } from "@/lib/localAuth";
+import { callbackSecretConfigured, verifyCallbackSecret, verifyCallbackSignature } from "@/lib/localAuth";
 import { callbackOutputUrls } from "@/lib/callbackPayload";
 
 function settle(taskId: string, result: Parameters<typeof jobStore.set>[1]) {
@@ -19,8 +19,6 @@ function callbackMessage(value: unknown, fallback: string): string {
 
 export const maxDuration = 180;
 
-/** Task IDs currently being settled in this process, so concurrent duplicates cannot mirror and persist twice. */
-const settling = new Set<string>();
 const FAILURE_STATES = new Set(["fail", "failed", "error", "canceled", "cancelled", "expired", "timeout", "timed_out"]);
 
 export async function POST(req: NextRequest) {
@@ -31,12 +29,14 @@ export async function POST(req: NextRequest) {
 
 async function handle(req: NextRequest): Promise<NextResponse> {
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
-  const callbackSecret = req.headers.get("x-callback-token") ?? bearer ?? req.nextUrl.searchParams.get("token");
+  const headerSecret = req.headers.get("x-callback-token") ?? bearer;
   if (!callbackSecretConfigured()) {
     console.error("[callback] rejected because KIE_CALLBACK_SECRET is not configured");
     return NextResponse.json({ error: "Callback authentication is not configured." }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
-  if (!verifyCallbackSecret(callbackSecret)) {
+  const authorized = verifyCallbackSecret(headerSecret)
+    || verifyCallbackSignature(req.nextUrl.searchParams.get("exp"), req.nextUrl.searchParams.get("sig"));
+  if (!authorized) {
     console.warn("[callback] rejected invalid callback credentials");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
@@ -96,17 +96,36 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   }
   const terminal = state === "success" || FAILURE_STATES.has(state) || (callbackBody.code !== undefined && callbackBody.code !== 200);
   if (terminal) {
-    if (settling.has(taskId)) {
+    if (!jobStore.claim(taskId)) {
       console.warn("[callback] duplicate in-flight callback ignored:", taskId);
       return NextResponse.json({ received: true });
     }
-    settling.add(taskId);
   }
-  try {
-    return await settleCallback(taskId, state, existingJob, data, callbackBody);
-  } finally {
-    settling.delete(taskId);
+  return settleCallback(taskId, state, existingJob, data, callbackBody);
+}
+
+type Persisted = Parameters<typeof guestDb.updateGeneration>[1];
+
+/** Writes the durable record. Returns false on failure so the caller can leave the job pending for a retry. */
+async function persist(taskId: string, updates: Persisted): Promise<boolean> {
+  if (GUEST_MODE) {
+    try { guestDb.updateGeneration(taskId, updates); return true; }
+    catch (error) { console.error("[callback] local update failed:", error instanceof Error ? error.message : error); return false; }
   }
+  const { error } = await supabaseAdmin.from("generations").update(updates).eq("task_id", taskId);
+  if (error) console.error("[callback] supabase update failed:", error.message);
+  return !error;
+}
+
+/** Persist first, then publish. If persisting fails the job stays pending and Kie's retry can settle it. */
+async function finish(taskId: string, result: Parameters<typeof jobStore.set>[1], updates: Persisted): Promise<NextResponse> {
+  if (!(await persist(taskId, updates))) {
+    const pending = jobStore.get(taskId);
+    if (pending && pending.status === "pending") jobStore.set(taskId, { ...pending, claimedAt: undefined });
+    return NextResponse.json({ error: "Could not save the result." }, { status: 503 });
+  }
+  settle(taskId, result);
+  return NextResponse.json({ received: true });
 }
 
 async function settleCallback(
@@ -118,98 +137,41 @@ async function settleCallback(
 ): Promise<NextResponse> {
   console.log("[callback] taskId:", taskId, "state:", state);
 
-  // Treat a non-200 top-level code as a hard error (e.g. Veo 500 responses that
-  // carry no state/status field but do carry body.code and body.msg).
+  const fail = (error: string) => finish(taskId, { status: "error", error }, { status: "error", error_msg: error });
+
+  // A non-200 top-level code is a hard error (e.g. Veo 500 responses that carry
+  // no state/status field but do carry body.code and body.msg).
   if (callbackBody.code !== undefined && callbackBody.code !== 200) {
     const error = callbackMessage(data.failMsg ?? callbackBody.msg, "Generation failed");
     console.log("[callback] top-level error code:", callbackBody.code, error);
-    settle(taskId, { status: "error", error });
-    if (GUEST_MODE) {
-      guestDb.updateGeneration(taskId, { status: "error", error_msg: error });
-    } else {
-      const { error: updateError } = await supabaseAdmin
-        .from("generations")
-        .update({ status: "error", error_msg: error })
-        .eq("task_id", taskId);
-      if (updateError) console.error("[callback] supabase error update failed:", updateError.message);
-    }
-    return NextResponse.json({ received: true });
+    return fail(error);
   }
 
   if (state === "success") {
     const kieUrls = callbackOutputUrls(data);
-    if (kieUrls.length > 0) {
-      const isVideo = existingJob.type === "video";
-      const folder = isVideo ? "videos" : "images";
-      let storedUrls: string[];
-      try {
-        storedUrls = await Promise.all(kieUrls.map((url) => mirrorToR2(url, folder, { publicOnly: true })));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const displayError = "Generation completed, but the result could not be saved. Please try again.";
-        console.error("[callback] storage upload failed:", message);
-        settle(taskId, { status: "error", error: displayError });
-        if (GUEST_MODE) {
-          guestDb.updateGeneration(taskId, { status: "error", error_msg: displayError });
-        } else {
-          const { error: updateError } = await supabaseAdmin
-            .from("generations")
-            .update({ status: "error", error_msg: displayError })
-            .eq("task_id", taskId);
-          if (updateError) console.error("[callback] supabase error update failed:", updateError.message);
-        }
-        return NextResponse.json({ received: true });
-      }
-
-      if (isVideo) {
-        settle(taskId, { status: "done", videoUrl: storedUrls[0] });
-        if (GUEST_MODE) {
-          guestDb.updateGeneration(taskId, { status: "done", video_url: storedUrls[0] });
-        } else {
-          const { error: updateError } = await supabaseAdmin
-            .from("generations")
-            .update({ status: "done", video_url: storedUrls[0] })
-            .eq("task_id", taskId);
-          if (updateError) console.error("[callback] supabase update error:", updateError.message);
-        }
-      } else {
-        settle(taskId, { status: "done", imageUrl: storedUrls[0], imageUrls: storedUrls });
-        if (GUEST_MODE) {
-          guestDb.updateGeneration(taskId, { status: "done", image_url: storedUrls[0], image_urls: storedUrls });
-        } else {
-          const { error: updateError } = await supabaseAdmin
-            .from("generations")
-            .update({ status: "done", image_url: storedUrls[0], image_urls: storedUrls })
-            .eq("task_id", taskId);
-          if (updateError) console.error("[callback] supabase update error:", updateError.message);
-        }
-      }
-    } else {
-      const error = "Generation completed without a valid HTTPS result URL.";
-      console.error("[callback]", error, "taskId:", taskId);
-      settle(taskId, { status: "error", error });
-      if (GUEST_MODE) {
-        guestDb.updateGeneration(taskId, { status: "error", error_msg: error });
-      } else {
-        await supabaseAdmin.from("generations").update({ status: "error", error_msg: error }).eq("task_id", taskId);
-      }
+    if (kieUrls.length === 0) {
+      console.error("[callback] success without a valid HTTPS result URL, taskId:", taskId);
+      return fail("Generation completed without a valid HTTPS result URL.");
     }
-  } else if (FAILURE_STATES.has(state)) {
-    const error = callbackMessage(data.failMsg ?? data.error ?? callbackBody.msg, "Generation failed");
-    settle(taskId, { status: "error", error });
-
-    if (GUEST_MODE) {
-      guestDb.updateGeneration(taskId, { status: "error", error_msg: error });
-    } else {
-      const { error: updateError } = await supabaseAdmin
-        .from("generations")
-        .update({ status: "error", error_msg: error })
-        .eq("task_id", taskId);
-      if (updateError) console.error("[callback] supabase error update failed:", updateError.message);
+    const isVideo = existingJob.type === "video";
+    const folder = isVideo ? "videos" : "images";
+    let storedUrls: string[];
+    try {
+      storedUrls = await Promise.all(kieUrls.map((url) => mirrorToR2(url, folder, { publicOnly: true })));
+    } catch (error) {
+      console.error("[callback] storage upload failed:", error instanceof Error ? error.message : String(error));
+      return fail("Generation completed, but the result could not be saved. Please try again.");
     }
-  } else {
-    console.log("[callback] intermediate state, ignoring:", state);
+    return isVideo
+      ? finish(taskId, { status: "done", videoUrl: storedUrls[0] }, { status: "done", video_url: storedUrls[0] })
+      : finish(taskId, { status: "done", imageUrl: storedUrls[0], imageUrls: storedUrls }, { status: "done", image_url: storedUrls[0], image_urls: storedUrls });
   }
 
+  if (FAILURE_STATES.has(state)) {
+    return fail(callbackMessage(data.failMsg ?? data.error ?? callbackBody.msg, "Generation failed"));
+  }
+
+  // Only terminal states take a claim, so there is nothing to release here.
+  console.log("[callback] intermediate state, ignoring:", state);
   return NextResponse.json({ received: true });
 }

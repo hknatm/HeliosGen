@@ -148,12 +148,32 @@ function validatedCallbackBase(baseUrl: string): URL {
   return parsedBase;
 }
 
-export function callbackUrl(baseUrl: string): string {
+const CALLBACK_URL_MAX_AGE_SECONDS = 24 * 60 * 60;
+
+function callbackSignature(secret: string, expires: number): string {
+  return createHmac("sha256", secret).update(`callback\n${expires}`).digest("base64url");
+}
+
+/** Callback URL carrying an expiring signature. The raw KIE_CALLBACK_SECRET never appears in it. */
+export function callbackUrl(baseUrl: string, now = Date.now()): string {
   const secret = process.env.KIE_CALLBACK_SECRET?.trim();
   if (!secret || secret.length < 32) throw new Error("KIE_CALLBACK_SECRET must contain at least 32 characters.");
   const url = new URL("/api/callback", validatedCallbackBase(baseUrl));
-  url.searchParams.set("token", secret);
+  const expires = Math.floor(now / 1000) + CALLBACK_URL_MAX_AGE_SECONDS;
+  url.searchParams.set("exp", String(expires));
+  url.searchParams.set("sig", callbackSignature(secret, expires));
   return url.toString();
+}
+
+/** Validates the expiring signature from a callback URL's query string. */
+export function verifyCallbackSignature(exp: string | null, sig: string | null, now = Date.now()): boolean {
+  const secret = process.env.KIE_CALLBACK_SECRET?.trim();
+  if (!secret || secret.length < 32 || !exp || !sig || !/^\d{1,12}$/.test(exp)) return false;
+  const expires = Number(exp);
+  if (expires * 1000 < now || expires * 1000 > now + (CALLBACK_URL_MAX_AGE_SECONDS + 60) * 1000) return false;
+  const expected = Buffer.from(callbackSignature(secret, expires));
+  const candidate = Buffer.from(sig);
+  return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
 const PROVIDER_ASSET_MAX_AGE_SECONDS = 24 * 60 * 60;

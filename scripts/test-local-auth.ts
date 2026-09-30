@@ -1,4 +1,4 @@
-import { callbackUrl, createLocalSession, localSessionExpiresAt, providerAssetUrl, safeNextPath, verifyCallbackSecret, verifyLocalPassword, verifyLocalSession, verifyProviderAssetAccess } from "../lib/localAuth";
+import { callbackUrl, createLocalSession, localSessionExpiresAt, providerAssetUrl, safeNextPath, verifyCallbackSecret, verifyCallbackSignature, verifyLocalPassword, verifyLocalSession, verifyProviderAssetAccess } from "../lib/localAuth";
 import { clearLoginFailures, loginRateLimit, recordLoginFailure, resetLoginRateLimitForTests } from "../lib/localLoginRateLimit";
 
 let failures = 0;
@@ -27,7 +27,12 @@ async function main() {
   assert(verifyCallbackSecret(process.env.KIE_CALLBACK_SECRET), "accepts the configured callback secret");
   assert(!verifyCallbackSecret("wrong-secret"), "rejects an invalid callback secret");
   const url = callbackUrl("https://helios.example.com");
-  assert(new URL(url).pathname === "/api/callback" && new URL(url).searchParams.get("token") === process.env.KIE_CALLBACK_SECRET, "builds the authenticated Kie callback URL");
+  const parsedCallback = new URL(url);
+  assert(parsedCallback.pathname === "/api/callback" && !url.includes(process.env.KIE_CALLBACK_SECRET!) && !parsedCallback.searchParams.has("token"), "callback URL never contains the raw secret");
+  assert(verifyCallbackSignature(parsedCallback.searchParams.get("exp"), parsedCallback.searchParams.get("sig")), "accepts a freshly signed callback URL");
+  assert(!verifyCallbackSignature(parsedCallback.searchParams.get("exp"), "x".repeat(43)), "rejects a forged callback signature");
+  assert(!verifyCallbackSignature(String(Number(parsedCallback.searchParams.get("exp")) + 100), parsedCallback.searchParams.get("sig")), "rejects a tampered expiry");
+  assert(!verifyCallbackSignature(parsedCallback.searchParams.get("exp"), parsedCallback.searchParams.get("sig"), Date.now() + 25 * 60 * 60 * 1000), "rejects an expired callback signature");
   try {
     callbackUrl("https://helios.example.com/base");
     assert(false, "rejects a callback base containing a path");

@@ -15,6 +15,7 @@
     "../lib/assetSrc.ts",
     "../lib/callbackPayload.ts",
     "../lib/remoteMedia.ts",
+    "../lib/jobStore.ts",
     "../lib/referenceBundle.ts",
     "../lib/referencePersistence.ts",
     "../lib/referencePresets.ts",
@@ -60,6 +61,7 @@
     "test-vision.ts",
     "test-listing.ts",
     "test-remote-media.ts",
+    "test-job-claim.ts",
     "test-render-e2e.ts"
   ]
 }
