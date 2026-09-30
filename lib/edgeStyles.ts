@@ -42,6 +42,7 @@ export function getSourceHandleColor(nodeType: string | undefined, sourceHandleI
     case "promptNode": return "#2DD4BF";
     case "assistantNode": return "#FBBF24";
     case "visionNode": return "#38bdf8";
+    case "listingSetNode": return "#f472b6";
     case "imageInputNode": return "#818cf8";
     case "generateNode": return "#818cf8";
     case "textRendererNode": return "#f97316";

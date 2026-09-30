@@ -204,6 +204,11 @@ export interface NodeData extends Record<string, unknown> {
   /** Optional Settings library preset that replaces the built-in Vision instruction. */
   visionPromptId?: string;
   visionOutput?: "text" | "json";
+  /** Listing Set node: notes, prompt-writer model and per-slot state. */
+  listingNotes?: string;
+  listingModel?: string;
+  listingAutoRun?: boolean;
+  listingSlots?: Array<{ id: number; status: "idle" | "running" | "done" | "skipped" | "error"; prompt?: string; note?: string; imageUrl?: string }>;
   // generation settings
   quality?: string;
   azureQuality?: string;
@@ -250,6 +255,7 @@ function filterKeys<T extends object>(obj: T, keys: (keyof T)[]): Partial<T> | n
 export function getNodeLabel(type: string, n: number): string {
   if (type === "assistantNode") return "AI AGENT";
   if (type === "visionNode") return `VISION #${n}`;
+  if (type === "listingSetNode") return `LISTING SET #${n}`;
   const map: Record<string, string> = {
     promptNode:          `Text #${n}`,
     imageInputNode:      `Image #${n}`,

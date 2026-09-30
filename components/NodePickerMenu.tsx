@@ -80,6 +80,11 @@ function inputHandleTopY(nodeType: string | undefined, handleId: string | null, 
     // Legacy saved workflows can retain a hidden text input edge.
     if (handleId === "text") return nodeH * 0.5;
   }
+  if (nodeType === "listingSetNode") {
+    if (handleId === "references") return nodeH * 0.25;
+    if (handleId === "specs") return nodeH * 0.5;
+    if (handleId === "settings") return nodeH * 0.75;
+  }
   if (nodeType === "visionNode") {
     if (handleId === "references") return nodeH * 0.38;
     if (handleId === "prompt") return nodeH * 0.6;
@@ -117,6 +122,7 @@ const NODE_DISPLAY_NAMES: Record<string, string> = {
   videoGeneratorNode: "VIDEO GEN",
   assistantNode:      "AI AGENT",
   visionNode:         "VISION",
+  listingSetNode:     "LISTING SET",
 };
 
 export interface DropState {
@@ -142,6 +148,12 @@ function targetHandleFor(
   sourceHandleId: string | null,
 ): string | null {
   if (targetNodeType === "promptComposerNode" && (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode")) return "variables";
+  if (targetNodeType === "listingSetNode") {
+    if (sourceNodeType === "imageInputNode" || sourceNodeType === "textRendererNode") return "references";
+    if (sourceNodeType === "variableNode" || sourceNodeType === "brandProfileNode" || sourceNodeType === "styleProfileNode") return "specs";
+    if (sourceNodeType === "generateNode") return "references";
+    return null;
+  }
   if (targetNodeType === "visionNode") {
     if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") return "references";
     if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "visionNode" || sourceNodeType === "textContentNode" || sourceNodeType === "promptComposerNode") return "prompt";

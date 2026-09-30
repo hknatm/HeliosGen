@@ -42,6 +42,7 @@ import VideoInputNode from "./nodes/VideoInputNode";
 import GenerateNode from "./nodes/GenerateNode";
 import VideoGeneratorNode from "./nodes/VideoGeneratorNode";
 import VisionNode from "@/components/nodes/VisionNode";
+import ListingSetNode from "@/components/nodes/ListingSetNode";
 import AssistantNode from "./nodes/AssistantNode";
 import { runVisionAssessment, visionModelReady } from "@/lib/vision";
 import VariableNode from "./nodes/VariableNode";
@@ -85,6 +86,7 @@ const nodeTypes = {
   videoGeneratorNode: VideoGeneratorNode,
   assistantNode: AssistantNode,
   visionNode: VisionNode,
+  listingSetNode: ListingSetNode,
   variableNode: VariableNode,
   brandProfileNode: BrandProfileNode,
   styleProfileNode: StyleProfileNode,
@@ -183,6 +185,7 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
     videoGeneratorNode: "VIDEO GEN",
     assistantNode: "AI AGENT",
     visionNode: "VISION",
+    listingSetNode: "LISTING SET",
     variableNode: "VARIABLE",
     brandProfileNode: "BRAND",
     styleProfileNode: "STYLE",
@@ -193,6 +196,7 @@ function nodeLabel(type: string, existingNodes: Node<NodeData>[]): string {
   };
   if (type === "assistantNode") return "AI AGENT";
   if (type === "visionNode") return `VISION #${count}`;
+  if (type === "listingSetNode") return `LISTING SET #${count}`;
   if (type === "variableNode") return `VARIABLE #${count}`;
   if (type === "brandProfileNode") return `BRAND #${count}`;
   if (type === "styleProfileNode") return `STYLE #${count}`;
@@ -1101,6 +1105,16 @@ export default function WorkflowCanvas() {
           (connection.targetHandle === "variables" && (source?.type === "variableNode" || source?.type === "brandProfileNode"));
         if (!validRendererSource) return false;
         if (connection.targetHandle !== "variables" && edges.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle)) return false;
+      }
+
+      // Listing Set: product photos (max 16), spec nodes, and one Image node for settings.
+      if (target?.type === "listingSetNode") {
+        const dup = edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === connection.targetHandle);
+        if (dup) return false;
+        if (connection.targetHandle === "references") return (source?.type === "imageInputNode" || source?.type === "generateNode" || source?.type === "textRendererNode");
+        if (connection.targetHandle === "specs") return source?.type === "variableNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode";
+        if (connection.targetHandle === "settings") return source?.type === "generateNode" && !edges.some((edge) => edge.target === connection.target && edge.targetHandle === "settings");
+        return false;
       }
 
       // Vision accepts ordered images (max 16) and one optional text brief.

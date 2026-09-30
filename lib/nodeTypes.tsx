@@ -1,6 +1,6 @@
 // Shared node type definitions — imported by both Sidebar and NodePickerMenu
 import React from "react";
-import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus, Type, Layers, PenLine, ScanEye } from "lucide-react";
+import { MessageSquare, Image, Film, Sparkles, Bot, Clapperboard, Braces, Combine, Palette, ImagePlus, Type, Layers, PenLine, ScanEye, LayoutGrid } from "lucide-react";
 
 export type NodeCategory = "generators" | "resources";
 
@@ -19,6 +19,7 @@ export const NODE_META: Record<
   styleProfileNode:   { accent: "#38bdf8", bg: "#0c2a40",  bigIcon: <ImagePlus    size={18} strokeWidth={1.7} /> },
   textContentNode:    { accent: "#f59e0b", bg: "#442a06",  bigIcon: <Type         size={18} strokeWidth={1.7} /> },
   textRendererNode:   { accent: "#f97316", bg: "#431407",  bigIcon: <Layers       size={18} strokeWidth={1.7} /> },
+  listingSetNode:     { accent: "#f472b6", bg: "#3b0f2a",  bigIcon: <LayoutGrid  size={18} strokeWidth={1.7} /> },
   visionNode:         { accent: "#38bdf8", bg: "#0c2a40",  bigIcon: <ScanEye     size={18} strokeWidth={1.7} /> },
   promptComposerNode: { accent: "#f472b6", bg: "#4a102f",  bigIcon: <Combine     size={18} strokeWidth={1.7} /> },
   copyComposerNode:   { accent: "#a78bfa", bg: "#25154a",  bigIcon: <PenLine     size={18} strokeWidth={1.7} /> },
@@ -45,6 +46,14 @@ export const NODES: Array<{
       ),
       label: "AI Agent",
       description: "LLM node — plain text or structured context, outputs a normal prompt",
+    },
+    {
+      type: "listingSetNode",
+      category: "generators",
+      canReceiveConnection: true,
+      icon: <LayoutGrid size={14} strokeWidth={1.5} />,
+      label: "Listing Set",
+      description: "Etsy listing: 10 images from product photo and specs",
     },
     {
       type: "visionNode",
@@ -186,6 +195,7 @@ export const NODE_WIDTH = { compact: 280, standard: 340, wide: 460 } as const;
 export const NODE_SIZE: Record<string, { w: number; h: number }> = {
   assistantNode: { w: NODE_WIDTH.standard, h: 300 },
   visionNode: { w: NODE_WIDTH.standard, h: 420 },
+  listingSetNode: { w: 520, h: 760 },
   videoGeneratorNode: { w: NODE_WIDTH.standard, h: 220 }, // Safe default for 16:9 + controls
   generateNode: { w: NODE_WIDTH.compact, h: 280 },       // 1:1 default
   promptNode: { w: NODE_WIDTH.wide, h: 250 },

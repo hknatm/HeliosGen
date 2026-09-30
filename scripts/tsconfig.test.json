@@ -37,6 +37,8 @@
     "../lib/copyComposer.ts",
     "../lib/store.ts",
     "../lib/vision.ts",
+    "../lib/listing/etsySlots.ts",
+    "../lib/listing/etsyFlow.ts",
     "test-local-db.ts",
     "test-deferred-storage.ts",
     "test-local-generated-asset.ts",
@@ -56,6 +58,7 @@
     "test-custom-provider.ts",
     "test-node-dimensions.ts",
     "test-vision.ts",
+    "test-listing.ts",
     "test-render-e2e.ts"
   ]
 }

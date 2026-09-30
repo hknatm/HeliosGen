@@ -79,20 +79,28 @@ export interface VisionRunInput {
   onDelta?: (accumulated: string) => void;
 }
 
-/** Streams a vision assessment through /api/assistant and returns the final text. */
-export async function runVisionAssessment(input: VisionRunInput): Promise<string> {
-  if (!input.references.length) throw new Error("Connect at least one image to assess.");
-  if (!visionModelReady(input.model)) throw new Error("Select GPT 5.2 · Vision or a custom model marked Vision.");
+export interface AssistantStreamInput {
+  model: string;
+  prompt: string;
+  systemPrompt: string;
+  references?: ReferenceImage[];
+  headers: HeadersInit;
+  signal?: AbortSignal;
+  onDelta?: (accumulated: string) => void;
+}
 
+/** Streams one /api/assistant call and returns the accumulated text. Throws on premature end or empty output. */
+export async function streamAssistantText(input: AssistantStreamInput): Promise<string> {
+  const references = input.references ?? [];
   const res = await fetch("/api/assistant", {
     method: "POST",
     headers: input.headers,
     body: JSON.stringify({
-      prompt: buildVisionUserPrompt(input.presetId, input.question, input.connectedText, input.references, resolveVisionInstruction(input.promptId)),
+      prompt: input.prompt,
       model: input.model,
-      references: input.references,
-      systemPrompt: input.outputMode === "json" ? VISION_JSON_CONTRACT : VISION_TEXT_CONTRACT,
-      ...(input.model.startsWith("custom:") ? { customProvider: { ...loadCustomProviderConfig(), vision: true } } : {}),
+      ...(references.length ? { references } : {}),
+      systemPrompt: input.systemPrompt,
+      ...(input.model.startsWith("custom:") ? { customProvider: { ...loadCustomProviderConfig(), ...(references.length ? { vision: true } : {}) } } : {}),
     }),
     signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(300_000)]) : AbortSignal.timeout(300_000),
   });
@@ -133,5 +141,21 @@ export async function runVisionAssessment(input: VisionRunInput): Promise<string
   }
   if (!terminal) throw new Error("The assessment ended before completion. Please try again.");
   if (!accumulated.trim()) throw new Error("The vision model returned no text. Please try again.");
-  return input.outputMode === "json" ? normalizeVisionJson(accumulated) : accumulated.trim();
+  return accumulated.trim();
+}
+
+/** Streams a vision assessment through /api/assistant and returns the final text. */
+export async function runVisionAssessment(input: VisionRunInput): Promise<string> {
+  if (!input.references.length) throw new Error("Connect at least one image to assess.");
+  if (!visionModelReady(input.model)) throw new Error("Select GPT 5.2 · Vision or a custom model marked Vision.");
+  const text = await streamAssistantText({
+    model: input.model,
+    prompt: buildVisionUserPrompt(input.presetId, input.question, input.connectedText, input.references, resolveVisionInstruction(input.promptId)),
+    systemPrompt: input.outputMode === "json" ? VISION_JSON_CONTRACT : VISION_TEXT_CONTRACT,
+    references: input.references,
+    headers: input.headers,
+    signal: input.signal,
+    onDelta: input.onDelta,
+  });
+  return input.outputMode === "json" ? normalizeVisionJson(text) : text;
 }
