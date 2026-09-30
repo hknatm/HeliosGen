@@ -113,13 +113,14 @@ export default function VideoInputNode({ id, data, selected }: NodeProps<VideoIn
   useEffect(() => {
     if (!videoUrl) {
       // Asset removed — reset crossfade state so the empty state renders
+      // Must run synchronously: a deferred reset can land after a new blob URL is set and wipe it.
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setBaseVideoUrl(undefined);
       baseVideoUrlRef.current = undefined;
-      const t = setTimeout(() => {
-        setBaseVideoUrl(undefined);
-        setTopVideoUrl(undefined);
-        setTopVideoReady(false);
-      }, 0);
-      return () => clearTimeout(t);
+      setTopVideoUrl(undefined);
+      setTopVideoReady(false);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      return;
     }
     if (videoUrl === baseVideoUrlRef.current) return;
     if (!baseVideoUrlRef.current) {
