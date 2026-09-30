@@ -524,7 +524,10 @@ export default function WorkflowDashboard() {
   const [user, setUser] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_GUEST_MODE === "true") { setUser(true); return; }
+    if (process.env.NEXT_PUBLIC_GUEST_MODE === "true") {
+      const t = setTimeout(() => setUser(true), 0);
+      return () => clearTimeout(t);
+    }
     const supabase = createClient();
     supabase.auth.getSession().then(({ data }) => setUser(!!data.session?.user));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {

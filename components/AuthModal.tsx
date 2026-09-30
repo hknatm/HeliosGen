@@ -74,16 +74,15 @@ export default function AuthModal() {
   const isMobile = useIsMobile();
 
   // Mount → paint → fade in; fade out → unmount
+  if (open && !mounted) setMounted(true);
   useEffect(() => {
     if (open) {
-      setMounted(true);
       const raf = requestAnimationFrame(() => setVisible(true));
       return () => cancelAnimationFrame(raf);
-    } else {
-      setVisible(false);
-      const t = setTimeout(() => setMounted(false), ANIM_MS);
-      return () => clearTimeout(t);
     }
+    const raf = requestAnimationFrame(() => setVisible(false));
+    const t = setTimeout(() => setMounted(false), ANIM_MS);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
   }, [open]);
 
   useEffect(() => {
@@ -93,13 +92,15 @@ export default function AuthModal() {
     return () => document.removeEventListener("keydown", handler);
   }, [open, setOpen]);
 
-  useEffect(() => {
+  // Reset the form each time the modal opens (adjusted during render, not in an effect).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
     if (open) {
       setEmail(""); setPassword(""); setError("");
       setMode(authModalView); setForgotSent(false); setShowPassword(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -379,7 +380,7 @@ export default function AuthModal() {
             ) : (
               <form onSubmit={submit} style={{ flex: 1, display: "flex", flexDirection: "column", gap: "14px" }}>
                 <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.45)", lineHeight: 1.5 }}>
-                  Enter your email and we'll send you a reset link.
+                  Enter your email and we&apos;ll send you a reset link.
                 </p>
                 <FieldLabel label="EMAIL" />
                 <InputWithIcon

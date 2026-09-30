@@ -93,12 +93,15 @@ export default function VideoInputNode({ id, data, selected }: NodeProps<VideoIn
   const trimOpenRef           = useRef(false);
   const committedTrimStartRef = useRef<number | undefined>(undefined);
   const committedTrimEndRef   = useRef<number | undefined>(undefined);
-  trimOpenRef.current             = trimOpen;
-  committedTrimStartRef.current   = data.trimStart as number | undefined;
-  committedTrimEndRef.current     = data.trimEnd   as number | undefined;
-  videoDurationRef.current        = videoDuration;
-  localTrimStartRef.current       = localTrimStart;
-  localTrimEndRef.current         = localTrimEnd;
+  // Mirror current values into refs for event handlers (written after render, not during it).
+  useEffect(() => {
+    trimOpenRef.current             = trimOpen;
+    committedTrimStartRef.current   = data.trimStart as number | undefined;
+    committedTrimEndRef.current     = data.trimEnd   as number | undefined;
+    videoDurationRef.current        = videoDuration;
+    localTrimStartRef.current       = localTrimStart;
+    localTrimEndRef.current         = localTrimEnd;
+  });
 
   // ── Two-layer crossfade: base video keeps playing while new URL loads on top ─
   const videoUrl = data.videoUrl as string | undefined;
@@ -110,11 +113,13 @@ export default function VideoInputNode({ id, data, selected }: NodeProps<VideoIn
   useEffect(() => {
     if (!videoUrl) {
       // Asset removed — reset crossfade state so the empty state renders
-      setBaseVideoUrl(undefined);
       baseVideoUrlRef.current = undefined;
-      setTopVideoUrl(undefined);
-      setTopVideoReady(false);
-      return;
+      const t = setTimeout(() => {
+        setBaseVideoUrl(undefined);
+        setTopVideoUrl(undefined);
+        setTopVideoReady(false);
+      }, 0);
+      return () => clearTimeout(t);
     }
     if (videoUrl === baseVideoUrlRef.current) return;
     if (!baseVideoUrlRef.current) {
@@ -169,7 +174,7 @@ export default function VideoInputNode({ id, data, selected }: NodeProps<VideoIn
     : (capturedFrameUrl ?? eagerEndFrameUrl ?? eagerStartFrameUrl);
   const isExtractingFrame = !!(data.extractingFrame as boolean | undefined);
   const capturedFrameRef     = useRef(capturedFrameUrl);
-  capturedFrameRef.current   = capturedFrameUrl;
+  useEffect(() => { capturedFrameRef.current = capturedFrameUrl; });
   const prevCapturedRef      = useRef(capturedFrameUrl);
   const prevEagerRef         = useRef(eagerFrameUrl);
 
@@ -312,9 +317,12 @@ export default function VideoInputNode({ id, data, selected }: NodeProps<VideoIn
 
   useEffect(() => {
     if (!imagePickEdgeCount) {
-      setPickerOpen(false);
-      setViewMode("video");
-      if (capturedFrameRef.current) updateNodeData(id, { capturedFrameUrl: undefined });
+      const t = setTimeout(() => {
+        setPickerOpen(false);
+        setViewMode("video");
+        if (capturedFrameRef.current) updateNodeData(id, { capturedFrameUrl: undefined });
+      }, 0);
+      return () => clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imagePickEdgeCount]);

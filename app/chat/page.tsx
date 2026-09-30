@@ -629,12 +629,17 @@ function ChatInner() {
   }, []);
 
   // Sync landingModel from store once hydrated
-  useEffect(() => { if (hydrated) setLandingModel(preferredModel as ModelId); }, [hydrated]);
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => setLandingModel(preferredModel as ModelId), 0);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
 
   useEffect(() => {
     const unsub = useChatSessionStore.persist?.onFinishHydration(() => setHydrated(true));
-    if (useChatSessionStore.persist?.hasHydrated()) setHydrated(true);
-    return unsub;
+    const t = useChatSessionStore.persist?.hasHydrated() ? setTimeout(() => setHydrated(true), 0) : undefined;
+    return () => { unsub?.(); if (t) clearTimeout(t); };
   }, []);
 
   // Local mode: load authoritative server sessions after hydration.

@@ -61,14 +61,12 @@ export default function SelectionToolbar() {
   const visible  = selected.length >= 2 && !anyGroupSelected;
 
   // For smooth animation we track mounted
-  const [shown, setShown] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const shown = visible && entered;
   useEffect(() => {
-    if (visible) {
-      const id = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(id);
-    } else {
-      setShown(false);
-    }
+    if (!visible) return;
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => { cancelAnimationFrame(id); setEntered(false); };
   }, [visible]);
 
   // Compute screen position (top-center of selection bounding box)

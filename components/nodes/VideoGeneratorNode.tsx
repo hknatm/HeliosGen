@@ -417,7 +417,7 @@ export default function VideoGeneratorNode({ id, data, selected }: NodeProps<Vid
     : [];
   const currentGenIdx = Math.min((data.currentGenIdx as number | undefined) ?? Math.max(0, generations.length - 1), Math.max(0, generations.length - 1));
   const generationsRef = useRef(generations);
-  generationsRef.current = generations;
+  useEffect(() => { generationsRef.current = generations; });
 
   const goToGen = useCallback((idx: number) => {
     const gens = generationsRef.current;
@@ -626,8 +626,8 @@ export default function VideoGeneratorNode({ id, data, selected }: NodeProps<Vid
 
   useEffect(() => {
     if (!imagePickEdgeCount) {
-      setPickerOpen(false);
-      setViewMode("video");
+      const t = setTimeout(() => { setPickerOpen(false); setViewMode("video"); }, 0);
+      return () => clearTimeout(t);
     }
   }, [imagePickEdgeCount]);
 
@@ -776,8 +776,8 @@ export default function VideoGeneratorNode({ id, data, selected }: NodeProps<Vid
         }
       }
       setPickerOpen(false);
-    } catch (e: any) {
-      setCaptureErr(e.message || "Failed to capture frame");
+    } catch (e: unknown) {
+      setCaptureErr((e instanceof Error && e.message) || "Failed to capture frame");
     } finally {
       setCapturing(false);
       updateNodeData(id, { extractingFrame: false });

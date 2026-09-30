@@ -35,8 +35,8 @@ export function useSpaceSync() {
     // If hydration already finished before this effect ran (common in Next.js
     // where SSR renders hasHydrated()=false but client is already hydrated)
     if (useWorkflowStore.persist?.hasHydrated()) {
-      setHydrated(true);
-      return;
+      const t = setTimeout(() => setHydrated(true), 0);
+      return () => clearTimeout(t);
     }
     const unsub = useWorkflowStore.persist?.onFinishHydration(() => setHydrated(true));
     return unsub;

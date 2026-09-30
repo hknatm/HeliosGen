@@ -22,9 +22,11 @@ export default function ResetPasswordModal() {
     return () => document.removeEventListener("keydown", handler);
   }, [open, setOpen]);
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
     if (open) { setPassword(""); setConfirm(""); setError(""); setSuccess(false); }
-  }, [open]);
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

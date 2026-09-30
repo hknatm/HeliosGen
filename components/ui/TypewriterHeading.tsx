@@ -11,9 +11,11 @@ export default function TypewriterHeading({
   const [displayed, setDisplayed] = useState("");
   const [done, setDone] = useState(false);
 
+  // Restart the animation when the text changes (adjusted during render, not in an effect).
+  const [prevText, setPrevText] = useState(text);
+  if (prevText !== text) { setPrevText(text); setDisplayed(""); setDone(false); }
+
   useEffect(() => {
-    setDisplayed("");
-    setDone(false);
     let i = 0;
     const id = setInterval(() => {
       i++;

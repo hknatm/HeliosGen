@@ -26,15 +26,15 @@ export default function CreditBalance() {
 
   // Fetch on mount (covers page refresh)
   useEffect(() => {
-    fetchBalance();
+    const first = setTimeout(fetchBalance, 0);
     const id = setInterval(fetchBalance, 60_000);
-    return () => clearInterval(id);
+    return () => { clearTimeout(first); clearInterval(id); };
   }, []);
 
   // Refresh when a run finishes (success or failure)
   useEffect(() => {
     if (prevRunning.current && !isRunning) {
-      fetchBalance();
+      setTimeout(fetchBalance, 0);
     }
     prevRunning.current = isRunning;
   }, [isRunning]);

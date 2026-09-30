@@ -259,9 +259,11 @@ export default function GenerateNode({ id, data, selected }: NodeProps<GenerateN
   }, [modelOpen, providerOpen, ratioOpen, qualityOpen, azureQualityOpen]);
 
   // Reset the custom-size subpanel whenever the ratio dropdown itself closes
-  useEffect(() => {
+  const [prevRatioOpen, setPrevRatioOpen] = useState(ratioOpen);
+  if (prevRatioOpen !== ratioOpen) {
+    setPrevRatioOpen(ratioOpen);
     if (!ratioOpen) { setAzureCustomSizeOpen(false); setCustomSizeError(null); }
-  }, [ratioOpen]);
+  }
 
   const openLightbox = useCallback(() => {
     setLightboxImgLoaded(false);

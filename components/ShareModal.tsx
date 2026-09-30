@@ -24,9 +24,11 @@ export default function ShareModal({ spaceId, open, onClose }: ShareModalProps) 
     ? `${window.location.origin}/public/workflow/${spaceId}`
     : `/public/workflow/${spaceId}`;
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
     if (!open) { setError(null); setCopied(false); }
-  }, [open]);
+  }
 
   if (!open) return null;
 

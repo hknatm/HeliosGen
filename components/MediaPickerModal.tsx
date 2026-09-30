@@ -270,8 +270,18 @@ export function MediaPickerModal({
     }
   }, [mediaKind]);
 
+  // Reset transient input state when the picker closes (adjusted during render, not in an effect).
+  const [prevPickerOpen, setPrevPickerOpen] = useState(open);
+  if (prevPickerOpen !== open) {
+    setPrevPickerOpen(open);
+    if (!open) { setUrlInput(""); setUrlError(""); setPreviewItem(null); }
+  }
+
   useEffect(() => {
-    if (!open) { setUrlInput(""); setUrlError(""); setPreviewItem(null); return; }
+    if (!open) return;
+    let cancelled = false;
+    // State resets run in a timer so the effect body itself never sets state synchronously.
+    const start = setTimeout(() => {
     setActiveTab(defaultTab);
     activeTabRef.current = defaultTab;
 
@@ -327,8 +337,10 @@ export function MediaPickerModal({
           setSourceItems(prev => mergeByNewest(prev, data.items));
         }
       }
-      setFetching(false);
+      if (!cancelled) setFetching(false);
     })();
+    }, 0);
+    return () => { cancelled = true; clearTimeout(start); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mediaKind]);
 
