@@ -208,6 +208,7 @@ export interface NodeData extends Record<string, unknown> {
   listingNotes?: string;
   listingModel?: string;
   listingAutoRun?: boolean;
+  listingSignature?: string;
   listingSlots?: Array<{ id: number; status: "idle" | "running" | "done" | "skipped" | "error"; prompt?: string; note?: string; imageUrl?: string }>;
   // generation settings
   quality?: string;

@@ -77,3 +77,16 @@ export function parseSkipReply(text: string): string | null {
   const match = text.trim().match(/^SKIP\b[\s:\-—.]*([\s\S]*)$/i);
   return match ? (match[1].trim() || "Skipped by the writer") : null;
 }
+
+/** Stable signature of everything that shapes the generated images. */
+export function listingSignature(facts: ListingFact[], refs: Array<{ url: string; name: string; usageNote?: string }>, model: string, image: { model: string; aspectRatio: string; quality: string } | null): string {
+  const body = JSON.stringify({
+    f: facts.map((f) => [f.key, f.value]),
+    r: refs.map((r) => [r.url, r.name, r.usageNote ?? ""]),
+    m: model,
+    i: image ? [image.model, image.aspectRatio, image.quality] : null,
+  });
+  let h = 5381;
+  for (let i = 0; i < body.length; i++) h = ((h << 5) + h + body.charCodeAt(i)) | 0;
+  return `${body.length}:${(h >>> 0).toString(36)}`;
+}

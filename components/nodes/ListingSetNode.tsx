@@ -13,7 +13,7 @@ import { MULTIMODAL_AGENT_MODEL, resolveReferenceImages } from "@/lib/referenceB
 import { visionModelReady } from "@/lib/vision";
 import { customModelId, customModelSupportsVision, loadCustomProviderModels } from "@/lib/customProvider";
 import { LISTING_SLOTS } from "@/lib/listing/etsySlots";
-import { initialSlotStates, type ListingSlotState } from "@/lib/listing/etsyFlow";
+import { initialSlotStates, listingSignature, type ListingSlotState } from "@/lib/listing/etsyFlow";
 import {
   describeProductPhoto, generateSlotImage, resolveListingFacts, resolveListingImageSettings, writeSlotPrompt,
 } from "@/lib/listing/runListing";
@@ -50,6 +50,9 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
   const refs = resolution.references;
   const slots = useMemo(() => initialSlotStates(facts, refs.map((r) => ({ name: r.name, usageNote: r.usageNote })), stored), [facts, refs, stored]);
 
+  const signature = useMemo(() => listingSignature(facts, refs, model, settings), [facts, refs, model, settings]);
+  const stale = slots.some((s) => s.status === "done") && typeof data.listingSignature === "string" && data.listingSignature !== signature;
+
   const problems = [
     ...(refs.length === 0 ? ["Connect the product photo to REFERENCES"] : []),
     ...(resolution.error ? [resolution.error] : []),
@@ -57,7 +60,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
     ...(facts.length === 0 ? ["Add product specs"] : []),
     ...(!visionModelReady(model) ? ["Select a Vision-capable model"] : []),
   ];
-  const status = busy ? "running" : slots.some((s) => s.status === "error") ? "error" : slots.some((s) => s.status === "done") ? "done" : "idle";
+  const status = busy ? "running" : stale ? "stale" : slots.some((s) => s.status === "error") ? "error" : slots.some((s) => s.status === "done") ? "done" : "idle";
 
   const save = useCallback((next: ListingSlotState[]) => updateNodeData(id, { listingSlots: next }), [id, updateNodeData]);
   const setSlot = useCallback((slotId: number, patch: Partial<ListingSlotState>) => {
@@ -73,7 +76,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
     return h;
   }, []);
 
-  const current = () => (useWorkflowStore.getState().nodes.find((n) => n.id === id)?.data.listingSlots ?? []) as ListingSlotState[];
+  const current = useCallback(() => (useWorkflowStore.getState().nodes.find((n) => n.id === id)?.data.listingSlots ?? []) as ListingSlotState[], [id]);
 
   /** Runs the given slots in order. Slot 1 pauses the run for hero review unless auto-run is on. */
   const run = useCallback(async (ids: number[], overridePrompts = false) => {
@@ -82,6 +85,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
     abortRef.current = controller;
     setBusy(true);
     setMessage("");
+    updateNodeData(id, { listingSignature: signature });
     try {
       const headers = await authHeaders();
       const description = await describeProductPhoto(model, refs, headers, controller.signal);
@@ -121,7 +125,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
       setBusy(false);
       abortRef.current = null;
     }
-  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, data.listingAutoRun]);
+  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, data.listingAutoRun, signature, id, updateNodeData, current]);
 
   const pending = () => slots.filter((s) => s.status === "idle" || s.status === "error").map((s) => s.id);
   const runAll = () => run(pending());
@@ -190,6 +194,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
           <input type="checkbox" disabled={readOnly} checked={data.listingAutoRun === true} onChange={(e) => updateNodeData(id, { listingAutoRun: e.target.checked })} />
           Run all slots without pausing after the hero
         </label>
+        {stale && <div role="status" className="text-[10px] text-amber-300">Specs, photos or settings changed since these images were made. Re-run to update them.</div>}
         {(problems.length > 0 || message) && <div role="status" className="text-[10px] text-amber-300">{message || problems.join(" · ")}</div>}
         <div className="flex items-center justify-between gap-2 shrink-0">
           <span className="text-[10px] text-[var(--ui-text-faint)]">{done}/10 images</span>

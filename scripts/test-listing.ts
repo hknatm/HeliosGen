@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { LISTING_SLOTS } from "../lib/listing/etsySlots";
-import { initialSlotStates, parseSkipReply, slotSkipReason, slotSystemPrompt, slotUserPrompt } from "../lib/listing/etsyFlow";
+import { listingSignature, initialSlotStates, parseSkipReply, slotSkipReason, slotSystemPrompt, slotUserPrompt } from "../lib/listing/etsyFlow";
 
 assert.equal(LISTING_SLOTS.length, 10);
 assert.deepEqual(LISTING_SLOTS.map((s) => s.id), [1,2,3,4,5,6,7,8,9,10]);
@@ -20,4 +20,9 @@ assert.equal(parseSkipReply("A studio shot"), null);
 assert.match(slotSystemPrompt(LISTING_SLOTS[0]), /SLOT 1: Studio hero/);
 const user = slotUserPrompt(LISTING_SLOTS[1], rich, "a glass block", refs, [{ id: 1, status: "done", prompt: "hero prompt" }]);
 assert.match(user, /Slot 1: hero prompt/);
+const r1 = [{ url: "a", name: "P" }];
+const sig = listingSignature(rich, r1, "gpt-5-2", null);
+assert.equal(sig, listingSignature(rich, r1, "gpt-5-2", null));
+assert.notEqual(sig, listingSignature([...rich, { key: "x", value: "y" }], r1, "gpt-5-2", null));
+assert.notEqual(sig, listingSignature(rich, [{ url: "b", name: "P" }], "gpt-5-2", null));
 console.log("listing ok");
