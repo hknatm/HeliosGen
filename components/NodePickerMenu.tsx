@@ -44,6 +44,8 @@ function sourceNodeTypesFor(targetHandle: string | null): string[] {
     case "resource":                       return ["imageInputNode", "generateNode", "textRendererNode"];
     case "text":                           return ["textContentNode", "copyComposerNode"];
     case "style":                          return ["styleProfileNode"];
+    case "specs":                          return ["variableNode", "brandProfileNode", "styleProfileNode"];
+    case "settings":                       return ["generateNode"];
 
     case "videoRef":
     case "referenceVideo":                 return ["videoInputNode"];
