@@ -76,7 +76,8 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
   const slots = useMemo(() => initialSlotStates(facts, refs.map((r) => ({ name: r.name, usageNote: r.usageNote })), stored), [facts, refs, stored]);
 
   const signature = useMemo(() => listingSignature(facts, refs, model, settings, slotPrompts), [facts, refs, model, settings, slotPrompts]);
-  const stale = slots.some((s) => s.status === "done") && typeof data.listingSignature === "string" && data.listingSignature !== signature;
+  // Each finished slot remembers the inputs it was made from, so re-running one slot never hides the others being out of date.
+  const stale = slots.some((s) => s.status === "done" && (s.sig ?? (data.listingSignature as string | undefined)) !== signature);
 
   const problems = [
     ...(refs.length === 0 ? ["Connect the product photo to REFERENCES"] : []),
@@ -113,6 +114,10 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
   const run = useCallback(async (ids: number[], opts: { mode?: RunMode; keepPrompt?: boolean } = {}) => {
     if (busy || !settings || problems.length) return;
     const mode = opts.mode ?? "sequential";
+    if (!ids.includes(1) && !current().find((s) => s.id === 1)?.imageUrl) {
+      setMessage("Run slot 1 (the hero) first so the other images match it.");
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     setBusy(true);
@@ -140,7 +145,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
         const hero = slotId > 1 ? current().find((s) => s.id === 1)?.imageUrl : undefined;
         const urls = [...refs.map((r) => r.url), ...(hero ? [hero] : [])].slice(0, 16);
         const imageUrl = await generateSlotImage({ prompt, imageUrls: urls, settings, headers, signal: controller.signal });
-        setSlot(slotId, { status: "done", imageUrl, note: undefined });
+        setSlot(slotId, { status: "done", imageUrl, note: undefined, sig: signature });
       };
       const guarded = async (slotId: number, work: () => Promise<void>) => {
         try { await work(); } catch (e: unknown) {
@@ -158,6 +163,10 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
       const rest = heroFirst ? ids.filter((x) => x !== 1) : ids;
       if (heroFirst) {
         await single(1);
+        if (!current().find((s) => s.id === 1)?.imageUrl) {
+          setMessage("The hero image failed, so the rest were not started. Fix slot 1 and run again.");
+          return;
+        }
         if (mode === "sequential") {
           setMessage("Slot 1 is ready. Review the hero, then press Run sequentially to continue.");
           return;
@@ -188,7 +197,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
       setBusy(false);
       abortRef.current = null;
     }
-  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, signature, id, updateNodeData, current, slotPrompts]);
+  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, signature, id, updateNodeData, current, slotPrompts, signature]);
 
   const pending = () => slots.filter((s) => s.status === "idle" || s.status === "error").map((s) => s.id);
   const runAll = () => run(pending(), { mode: "all" });

@@ -211,7 +211,7 @@ export interface NodeData extends Record<string, unknown> {
   listingSlotPrompts?: Record<string, string>;
   listingAutoRun?: boolean;
   listingSignature?: string;
-  listingSlots?: Array<{ id: number; status: "idle" | "running" | "done" | "skipped" | "error"; prompt?: string; note?: string; imageUrl?: string }>;
+  listingSlots?: Array<{ id: number; status: "idle" | "running" | "done" | "skipped" | "error"; prompt?: string; note?: string; imageUrl?: string; sig?: string }>;
   // generation settings
   quality?: string;
   azureQuality?: string;

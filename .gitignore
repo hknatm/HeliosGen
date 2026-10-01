@@ -79,3 +79,6 @@ public/generated/
 *.log
 .test-dist/
 !/public/generated/.gitkeep
+
+*.bak
+resp.json

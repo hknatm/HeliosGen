@@ -61,7 +61,7 @@ export const LISTING_SLOTS: ListingSlot[] = [
     id: 8,
     name: "Customer photo to keepsake, before and after",
     requires: "customerPhoto",
-    skipReason: "No customer photo connected",
+    skipReason: "Needs a second photo named \"customer photo\" (set its name on the Upload node)",
     instruction: "Write the prompt for a split layout: on the left a flat printed photo representing the customer's original picture, on the right the finished product from the attached photo, with a thin arrow between them. Use the second attached image as the original photo if there is one. Do not redraw or invent people. If no original photo is attached and none is described in the facts, reply SKIP with the reason. Use only short generic labels such as \"Your photo\" and \"Your keepsake\". Clean light background, even lighting on both sides.",
   },
   {

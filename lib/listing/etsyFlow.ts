@@ -9,6 +9,8 @@ export interface ListingSlotState {
   prompt?: string;
   note?: string;
   imageUrl?: string;
+  /** Input signature when this slot's image was made; used to detect stale slots individually. */
+  sig?: string;
 }
 
 const KEY_HINTS: Record<Exclude<ListingSkipRule, "customerPhoto">, RegExp> = {
