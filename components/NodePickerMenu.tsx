@@ -37,8 +37,8 @@ function sourceNodeTypesFor(targetHandle: string | null): string[] {
   switch (targetHandle) {
     case "prompt":                         return ["promptNode", "assistantNode", "visionNode", "variableNode", "textContentNode", "promptComposerNode"];
     case "variables":                      return ["variableNode", "brandProfileNode", "styleProfileNode"];
-    case "references":                     return ["imageInputNode", "generateNode", "textRendererNode"];
-    case "image":                          return ["imageInputNode", "generateNode", "textRendererNode", "assistantNode"];
+    case "references":                     return ["imageInputNode", "generateNode", "textRendererNode", "listingSetNode"];
+    case "image":                          return ["imageInputNode", "generateNode", "textRendererNode", "assistantNode", "listingSetNode"];
     case "startFrame":
     case "endFrame":
     case "resource":                       return ["imageInputNode", "generateNode", "textRendererNode"];
@@ -61,6 +61,7 @@ function outputHandleForNewNode(newNodeType: string, targetHandle: string): stri
   if (newNodeType === "assistantNode" && targetHandle === "image") return "refsOut";
   if (newNodeType === "assistantNode" && targetHandle === "prompt") return "textOut";
   if (newNodeType === "visionNode") return "textOut";
+  if (newNodeType === "listingSetNode") return "imagesOut";
   if (newNodeType === "videoInputNode") {
     if (targetHandle === "videoRef" || targetHandle === "referenceVideo") return "videoRefOut";
     if (targetHandle === "startFrame") return "startFrameOut";
@@ -206,6 +207,11 @@ function targetHandleFor(
   }
   // Single-output nodes — fall back to node-type routing
   if (sourceNodeType === "promptNode" || sourceNodeType === "assistantNode" || sourceNodeType === "visionNode" || sourceNodeType === "promptComposerNode" || sourceNodeType === "variableNode" || sourceNodeType === "textContentNode") return "prompt";
+  if (sourceNodeType === "listingSetNode") {
+    if (targetNodeType === "generateNode") return "image";
+    if (targetNodeType === "visionNode" || targetNodeType === "assistantNode") return "references";
+    return null;
+  }
   if (sourceNodeType === "imageInputNode" || sourceNodeType === "generateNode" || sourceNodeType === "textRendererNode") {
     if (targetNodeType === "videoGeneratorNode") return "startFrame";
     if (targetNodeType === "generateNode")       return "image";

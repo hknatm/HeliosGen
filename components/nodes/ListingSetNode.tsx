@@ -6,6 +6,7 @@ import TypedHandle from "./TypedHandle";
 import NodeStatusBadge from "./NodeStatusBadge";
 import NodeActionBar from "./NodeActionBar";
 import { useWorkflowStore, NodeData } from "@/lib/store";
+import { loadSystemPromptSettings, type SystemPromptPreset } from "@/lib/systemPrompt";
 import { useReadOnly } from "@/lib/readOnlyContext";
 import { createClient } from "@/lib/supabase/client";
 import { assetSrc } from "@/lib/galleryUtils";
@@ -41,6 +42,30 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
   ], [customModels]);
   const addNode = useWorkflowStore((s) => s.addNode);
 
+  // Settings prompt library: each slot can use one preset instead of the built-in instruction.
+  const [library, setLibrary] = useState<SystemPromptPreset[]>(() => loadSystemPromptSettings().presets);
+  useEffect(() => {
+    const refresh = () => setLibrary(loadSystemPromptSettings().presets);
+    window.addEventListener("aiui-system-prompts-changed", refresh);
+    window.addEventListener("storage", refresh);
+    return () => { window.removeEventListener("aiui-system-prompts-changed", refresh); window.removeEventListener("storage", refresh); };
+  }, []);
+  const slotPromptIds = useMemo(() => (data.listingSlotPrompts ?? {}) as Record<string, string>, [data.listingSlotPrompts]);
+  /** Only presets that still exist count; a deleted preset falls back to the built-in instruction. */
+  const slotPrompts = useMemo(() => {
+    const out: Record<number, string> = {};
+    for (const [slotId, presetId] of Object.entries(slotPromptIds)) {
+      const preset = library.find((p) => p.id === presetId);
+      if (preset) out[Number(slotId)] = preset.content;
+    }
+    return out;
+  }, [slotPromptIds, library]);
+  const setSlotPrompt = (slotId: number, presetId: string) => {
+    const next = { ...slotPromptIds };
+    if (presetId) next[String(slotId)] = presetId; else delete next[String(slotId)];
+    updateNodeData(id, { listingSlotPrompts: next });
+  };
+
   const model = (data.listingModel as string | undefined) ?? MULTIMODAL_AGENT_MODEL;
   const notes = (data.listingNotes as string | undefined) ?? "";
   const stored = useMemo(() => (Array.isArray(data.listingSlots) ? data.listingSlots : []) as ListingSlotState[], [data.listingSlots]);
@@ -50,7 +75,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
   const refs = resolution.references;
   const slots = useMemo(() => initialSlotStates(facts, refs.map((r) => ({ name: r.name, usageNote: r.usageNote })), stored), [facts, refs, stored]);
 
-  const signature = useMemo(() => listingSignature(facts, refs, model, settings), [facts, refs, model, settings]);
+  const signature = useMemo(() => listingSignature(facts, refs, model, settings, slotPrompts), [facts, refs, model, settings, slotPrompts]);
   const stale = slots.some((s) => s.status === "done") && typeof data.listingSignature === "string" && data.listingSignature !== signature;
 
   const problems = [
@@ -105,7 +130,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
         const existing = opts.keepPrompt ? current().find((s) => s.id === slotId)?.prompt : undefined;
         if (existing) return existing;
         setSlot(slotId, { status: "running", note: "Writing prompt…" });
-        const written = await writeSlotPrompt({ slotId, model, facts, description, references: refs, states: current(), headers, signal: controller.signal });
+        const written = await writeSlotPrompt({ slotId, model, facts, description, references: refs, states: current(), headers, signal: controller.signal, instruction: slotPrompts[slotId] });
         if (written.skipReason) { setSlot(slotId, { status: "skipped", note: written.skipReason, prompt: undefined }); return null; }
         setSlot(slotId, { prompt: written.prompt });
         return written.prompt!;
@@ -163,7 +188,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
       setBusy(false);
       abortRef.current = null;
     }
-  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, signature, id, updateNodeData, current]);
+  }, [busy, settings, problems.length, authHeaders, model, refs, facts, setSlot, save, signature, id, updateNodeData, current, slotPrompts]);
 
   const pending = () => slots.filter((s) => s.status === "idle" || s.status === "error").map((s) => s.id);
   const runAll = () => run(pending(), { mode: "all" });
@@ -220,6 +245,18 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
                   <span className="truncate font-semibold">{slot.id}. {slot.name}</span>
                   <span className={s.status === "error" ? "text-red-400" : s.status === "done" ? "text-emerald-400" : "text-[var(--ui-text-faint)]"}>{s.status}</span>
                 </div>
+                <label className="block">
+                  <span className="sr-only">Prompt for slot {slot.id}</span>
+                  <select aria-label={`Prompt for slot ${slot.id}`} value={slotPrompts[slot.id] !== undefined ? slotPromptIds[String(slot.id)] : ""} disabled={readOnly || busy}
+                    onChange={(e) => setSlotPrompt(slot.id, e.target.value)}
+                    className="w-full rounded border border-white/10 bg-black/30 px-1 py-0.5 text-[9px] text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]">
+                    <option value="">Built-in prompt</option>
+                    {library.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </label>
+                {slotPromptIds[String(slot.id)] && slotPrompts[slot.id] === undefined && (
+                  <span className="text-[9px] text-amber-300">Missing preset · using built-in</span>
+                )}
                 {s.imageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={assetSrc(s.imageUrl)} alt={`${slot.name} result`} className="w-full rounded object-cover max-h-32" />
@@ -254,6 +291,7 @@ export default function ListingSetNode({ id, data, selected }: NodeProps<Listing
             ))}
         </div>
       </div>
+      <TypedHandle id="imagesOut" kind="images" side="right" top={50} label="IMAGES" title="Every finished slot image, in slot order" connected={done > 0} />
       <TypedHandle id="references" kind="images" side="left" top={25} label="PHOTOS" title="Product photo, then optional customer photo" connected={refs.length > 0} />
       <TypedHandle id="specs" kind="context" side="left" top={50} label="SPECS" title="Variable, Brand or Style nodes" connected={facts.length > 0} />
       <TypedHandle id="settings" kind="images" side="left" top={75} label="IMAGE SETTINGS" title="Image node that supplies model and aspect ratio" connected={!!settings} />

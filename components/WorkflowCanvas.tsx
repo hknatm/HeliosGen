@@ -1095,6 +1095,13 @@ export default function WorkflowCanvas() {
         source?.type !== "promptComposerNode"
       ) return false;
 
+      // Listing Set's IMAGES output carries a bundle of images: only multi-image inputs accept it.
+      if (source?.type === "listingSetNode") {
+        const th = connection.targetHandle;
+        const multi = th === "references" && (target?.type === "visionNode" || target?.type === "assistantNode");
+        if (!(multi || (th === "image" && target?.type === "generateNode"))) return false;
+      }
+
       // Text Overlay accepts an app image, image-style, optional Variables/Brand
       // context for AI copy refinement, and (legacy) structured Text Content.
       if (target?.type === "textRendererNode") {
@@ -1124,7 +1131,7 @@ export default function WorkflowCanvas() {
           return !edges.some((edge) => edge.target === connection.target && edge.targetHandle === "prompt");
         }
         if (connection.targetHandle === "references") {
-          if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode") return false;
+          if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode" && source?.type !== "listingSetNode") return false;
           if (edges.some((edge) => edge.source === connection.source && edge.target === connection.target && edge.targetHandle === "references")) return false;
           const used = edges
             .filter((edge) => edge.target === connection.target && edge.targetHandle === "references")
@@ -1144,7 +1151,7 @@ export default function WorkflowCanvas() {
           return source?.type === "variableNode" || source?.type === "brandProfileNode" || source?.type === "styleProfileNode";
         }
         if (connection.targetHandle === "references") {
-          if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode") return false;
+          if (source?.type !== "imageInputNode" && source?.type !== "generateNode" && source?.type !== "textRendererNode" && source?.type !== "listingSetNode") return false;
           const connectedCount = edges
             .filter((edge) => edge.target === connection.target && edge.targetHandle === "references")
             .reduce((total, edge) => {

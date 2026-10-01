@@ -67,12 +67,12 @@ export interface WriteResult { prompt?: string; skipReason?: string }
 
 export async function writeSlotPrompt(args: {
   slotId: number; model: string; facts: ListingFact[]; description: string;
-  references: ReferenceImage[]; states: ListingSlotState[]; headers: HeadersInit; signal?: AbortSignal;
+  references: ReferenceImage[]; states: ListingSlotState[]; headers: HeadersInit; signal?: AbortSignal; instruction?: string;
 }): Promise<WriteResult> {
   const slot = LISTING_SLOTS.find((s) => s.id === args.slotId)!;
   const text = await streamAssistantText({
     model: args.model, headers: args.headers, signal: args.signal,
-    systemPrompt: slotSystemPrompt(slot),
+    systemPrompt: slotSystemPrompt(slot, args.instruction),
     prompt: slotUserPrompt(slot, args.facts, args.description, args.references, args.states),
   });
   const skip = parseSkipReply(text);

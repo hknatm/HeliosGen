@@ -207,6 +207,8 @@ export interface NodeData extends Record<string, unknown> {
   /** Listing Set node: notes, prompt-writer model and per-slot state. */
   listingNotes?: string;
   listingModel?: string;
+  /** Settings prompt-library preset id per slot id; missing means the built-in instruction. */
+  listingSlotPrompts?: Record<string, string>;
   listingAutoRun?: boolean;
   listingSignature?: string;
   listingSlots?: Array<{ id: number; status: "idle" | "running" | "done" | "skipped" | "error"; prompt?: string; note?: string; imageUrl?: string }>;

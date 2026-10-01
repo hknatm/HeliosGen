@@ -51,8 +51,10 @@ export function initialSlotStates(facts: ListingFact[], refs: ListingRef[], prev
   });
 }
 
-export function slotSystemPrompt(slot: ListingSlot): string {
-  return `${LISTING_SHARED_RULES}\n\n## SLOT ${slot.id}: ${slot.name}\n\n${slot.instruction}`;
+/** `instructionOverride` (a Settings prompt-library preset) replaces only the slot instruction; shared rules stay. */
+export function slotSystemPrompt(slot: ListingSlot, instructionOverride?: string): string {
+  const instruction = instructionOverride?.trim() || slot.instruction;
+  return `${LISTING_SHARED_RULES}\n\n## SLOT ${slot.id}: ${slot.name}\n\n${instruction}`;
 }
 
 const PRIOR_CAP = 500;
@@ -79,12 +81,13 @@ export function parseSkipReply(text: string): string | null {
 }
 
 /** Stable signature of everything that shapes the generated images. */
-export function listingSignature(facts: ListingFact[], refs: Array<{ url: string; name: string; usageNote?: string }>, model: string, image: { model: string; aspectRatio: string; quality: string } | null): string {
+export function listingSignature(facts: ListingFact[], refs: Array<{ url: string; name: string; usageNote?: string }>, model: string, image: { model: string; aspectRatio: string; quality: string } | null, slotPrompts: Record<number, string> = {}): string {
   const body = JSON.stringify({
     f: facts.map((f) => [f.key, f.value]),
     r: refs.map((r) => [r.url, r.name, r.usageNote ?? ""]),
     m: model,
     i: image ? [image.model, image.aspectRatio, image.quality] : null,
+    p: Object.entries(slotPrompts).sort(([a], [b]) => Number(a) - Number(b)),
   });
   let h = 5381;
   for (let i = 0; i < body.length; i++) h = ((h << 5) + h + body.charCodeAt(i)) | 0;

@@ -37,6 +37,14 @@ export function referenceName(source: Node<NodeData>): string {
 }
 
 export function directReferences(source: Node<NodeData>, sourceHandle?: string | null): ReferenceImage[] {
+  // Listing Set exposes every finished slot image, in slot order, as one ordered bundle.
+  if (source.type === "listingSetNode") {
+    const slots = Array.isArray(source.data.listingSlots) ? source.data.listingSlots : [];
+    return slots
+      .filter((slot) => slot.status === "done" && slot.imageUrl)
+      .sort((a, b) => a.id - b.id)
+      .map((slot) => ({ id: `${source.id}:slot${slot.id}`, sourceNodeId: source.id, name: `Listing image ${slot.id}`, usageNote: "", url: slot.imageUrl! }));
+  }
   if (source.type === "imageInputNode" && Array.isArray(source.data.referenceImages)) {
     return (source.data.referenceImages as ReferenceImageInput[]).flatMap((item, index) => {
       const url = item.r2Url ?? item.inputImage;
