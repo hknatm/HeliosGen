@@ -72,13 +72,6 @@ const SOURCE_HANDLE_SPACING = 32; // px between source handles
 // while every handle keeps its own slot, so edges don't jump when frame handles hide.
 const sourceHandleCenterOffset = (i: number) => (i - (SOURCE_HANDLES.length - 1) / 2) * SOURCE_HANDLE_SPACING;
 
-const STATUS_DOT: Record<string, string> = {
-  idle: "bg-[#1E1E1E]",
-  running: "bg-amber-400 animate-pulse",
-  done: "bg-[#34d399]",
-  error: "bg-red-500",
-};
-
 // ── @mention → <<<image N>>> replacement (same logic as GenerateNode) ─────────
 
 function resolveMentions(

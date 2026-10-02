@@ -29,11 +29,3 @@ export const HELIOS_MODE: HeliosMode = isHeliosMode(configuredMode)
     : "cloud";
 
 export const IS_LOCAL_MODE = HELIOS_MODE === "local";
-export const IS_CLOUD_MODE = HELIOS_MODE === "cloud";
-
-export const RUNTIME_CONFIG = Object.freeze({
-  mode: HELIOS_MODE,
-  singleUser: IS_LOCAL_MODE,
-  database: IS_LOCAL_MODE ? "local" : "supabase",
-  mediaStorage: IS_LOCAL_MODE ? "local-disk" : "r2",
-} as const);

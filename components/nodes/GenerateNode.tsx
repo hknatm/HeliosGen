@@ -56,14 +56,6 @@ function ratioRect(value: string) {
 
 // ── Status dot ────────────────────────────────────────────────────────────────
 
-const STATUS_DOT: Record<string, string> = {
-  idle: "bg-[#1E2840]",
-  pending: "bg-gray-500",
-  running: "bg-amber-400 animate-pulse",
-  done: "bg-[#2DD4BF]",
-  error: "bg-red-500",
-};
-
 /**
  * Replace @mentions with <<<image N>>> placeholders AND reorder imageUrls so
  * that imageUrls[N-1] always corresponds to <<<image N>>> in the prompt.

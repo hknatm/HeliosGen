@@ -23,10 +23,6 @@ export interface SystemPromptSettings {
 
 export const DEFAULT_AGENT_PROMPT = `You are HeliosGen's creative production assistant. Follow the user's request and any task-specific output contract. Preserve supplied facts and intent, make the result clear and useful, and never invent unsupported claims. Return only the requested output unless the user asks for an explanation.`;
 
-export const DEFAULT_SYSTEM_PROMPTS: Record<SystemPromptId, string> = {
-  agent: DEFAULT_AGENT_PROMPT,
-};
-
 export const DEFAULT_SYSTEM_PROMPT_SETTINGS: SystemPromptSettings = {
   version: 2,
   agent: DEFAULT_AGENT_PROMPT,
@@ -176,6 +172,3 @@ export function resetSystemPrompts(): void {
   const current = loadSystemPromptSettings();
   saveSystemPromptSettings({ ...current, agent: DEFAULT_AGENT_PROMPT });
 }
-
-/** @deprecated Prefer getSystemPrompt("agent") in client components. */
-export const SYSTEM_PROMPT = DEFAULT_AGENT_PROMPT;

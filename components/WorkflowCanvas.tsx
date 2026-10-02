@@ -5,7 +5,6 @@ import {
   Background,
   Controls,
   BackgroundVariant,
-  Panel,
   Node,
   NodeChange,
   Connection,

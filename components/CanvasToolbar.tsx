@@ -1,8 +1,8 @@
 "use client";
 import React, { useState } from "react";
 import {
-  Plus, MousePointer2, Hand, Scissors, LayoutTemplate,
-  MessageSquare, Undo2, Redo2, Share2,
+  Plus, MousePointer2, Hand,
+  Undo2, Redo2, Share2,
 } from "lucide-react";
 
 type ToolId = "select" | "hand" | "cut" | "frame" | "comment";

@@ -21,11 +21,6 @@ import { loadTheme, saveTheme, THEME_CHANGED_EVENT, type AppTheme } from "@/lib/
 import { fontOptions, loadTextFonts, saveTextFonts, type TextFont } from "@/lib/textFonts";
 import { DEFAULT_TEXT_RENDERING_SETTINGS, loadTextRenderingSettings, normalizeTextRenderingSettings, saveTextRenderingSettings, type TextRenderingSettings } from "@/lib/textRenderingSettings";
 
-/* ─── Provider options (re-exported for backwards compat) ───────────────────── */
-
-export { PROVIDERS, loadModelProviders, saveModelProviders, getModelProvider };
-export type { ProviderId };
-
 export type CodexStatus =
   | { kind: "unknown" }
   | { kind: "ready" }
@@ -73,9 +68,6 @@ export function saveAzureBaseUrl(url: string) {
     localStorage.setItem(AZURE_BASE_KEY, url);
   } catch { /* noop */ }
 }
-
-/** @deprecated renamed — use getAzureDeployment(). Kept for backwards compat. */
-export const getAzureEndpoint = getAzureDeployment;
 
 /** Deployment name — used in the URL path (defaults to "auto-model"). */
 export function loadAzureTextDeployment(): string {

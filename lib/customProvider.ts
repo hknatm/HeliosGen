@@ -166,13 +166,6 @@ export function customModelSupportsVision(model: string): boolean {
   return configuredModel?.vision === true && !!configuredBaseUrl && configuredModel.providerBaseUrl === configuredBaseUrl;
 }
 
-export function clearCustomProviderModels() {
-  try {
-    localStorage.removeItem(MODELS_KEY);
-    window.dispatchEvent(new CustomEvent("aiui-custom-provider-models-changed"));
-  } catch { /* noop */ }
-}
-
 /** Response shape expected from the /api/custom-provider/models route. */
 export interface CustomProviderModelDescriptor {
   id: string;

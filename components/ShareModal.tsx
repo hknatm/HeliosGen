@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { X, Copy, Check, Globe, Lock } from "lucide-react";
 import { useWorkflowStore } from "@/lib/store";
 import { IS_LOCAL_MODE } from "@/lib/runtimeConfig";

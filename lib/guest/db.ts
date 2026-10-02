@@ -773,14 +773,6 @@ export function getAppSettings(): Record<string, unknown> {
   return out;
 }
 
-export function getAppSetting(key: string): unknown {
-  const row = getDb().prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as
-    | { value: string }
-    | undefined;
-  if (!row) return undefined;
-  try { return JSON.parse(row.value); } catch { return undefined; }
-}
-
 /** Upserts a subset of settings in a single transaction. */
 export function setAppSettings(settings: Record<string, unknown>): void {
   const db = getDb();

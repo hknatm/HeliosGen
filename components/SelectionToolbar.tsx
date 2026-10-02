@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useReactFlow, Node } from "@xyflow/react";
 import { useWorkflowStore, NodeData } from "@/lib/store";
-import { edgeStyle } from "@/lib/edgeStyles";
 import { arrangeNodes } from "@/lib/arrangeNodes";
 
 const GROUP_PADDING = 24;
@@ -50,7 +49,6 @@ function Sep() {
 export default function SelectionToolbar() {
   const { flowToScreenPosition } = useReactFlow();
   const nodes      = useWorkflowStore((s) => s.nodes);
-  const edges      = useWorkflowStore((s) => s.edges);
   const onNodesChange = useWorkflowStore((s) => s.onNodesChange);
   const addNode    = useWorkflowStore((s) => s.addNode);
   const insertEdge = useWorkflowStore((s) => s.insertEdge);
